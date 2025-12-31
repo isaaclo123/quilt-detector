@@ -324,11 +324,31 @@
         else if((e.key==="ArrowRight"||e.key==="Right")&&!animating){ renderModal((modalIdx+1)%patches.length,'left'); }
       }
     });
-    modal.addEventListener('mousedown', e=>{
-      if(e.target===modal) closeModal();
-    });
-    modal.addEventListener('touchstart', e=>{
-      if(e.target===modal) closeModal();
+
+    // --- Fix for mobile click/tap event "bleed through" on modal ---
+
+    // Prevent ALL pointer/touch/mouse events from passing through modal when active
+    function stopEvent(e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+
+    // Block background interaction for all relevant event types
+    ['touchstart','touchmove','touchend','pointerdown','pointerup','mousedown','mouseup','click'].forEach(evt => {
+      modal.addEventListener(evt, function(e){
+        if(modal.classList.contains('active')) {
+          // Only allow closing modal when clicking backdrop (modal, but not modal content)
+          if(e.target === modal) {
+            if(evt === 'mousedown' || evt === 'touchstart' || evt === 'pointerdown') {
+              closeModal();
+              stopEvent(e);
+            }
+          } else {
+            // Interacting with modal children (actual dialog) should NOT close modal or affect quilt below
+            stopEvent(e);
+          }
+        }
+      }, {capture: true}); // Use capture phase to grab events before they can reach children or bubble
     });
 
     window.addEventListener('resize', ()=>{
