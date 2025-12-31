@@ -2,13 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Manual Quilt Patch Selector – Comic Reading Order</title>
+  <title>Manual Quilt Patch Selector – Scrollable Quilt Image (No Shrink)</title>
   <style>
     body { background: #232; color: #eee; font-family: sans-serif; padding: 2em;}
-    #quilt-area { position:relative; display:inline-block; }
-    #quilt-bg { display:block; max-width: 700px; max-height: 70vh; }
+    #quilt-area {
+      position: relative;
+      display: inline-block;
+      /* Make quilt-area scrollable for both image and overlays */
+      overflow: auto;
+      max-width: 90vw;
+      max-height: 80vh;
+      border: 2px solid #334;
+      background: #181a32;
+    }
+    #quilt-bg {
+      display: block;
+      /* Use image's natural size, let scrollbars show */
+      max-width: none !important;
+      max-height: none !important;
+      width: auto !important;
+      height: auto !important;
+    }
     #patch-rects, .overlay-buttons {
-      position: absolute; left: 0; top: 0; z-index: 15;
+      position: absolute; top: 0; left: 0; z-index: 15;
     }
     #patch-rects { pointer-events: all; }
     .overlay-buttons { pointer-events: none; }
@@ -89,23 +105,18 @@
   <pre id="result"></pre>
   <script>
     // Comic-reading-order sort: vertical above/below relationships dominate read order,
-    // for overlaps sort left to right. This allows for natural comic/book layouts.
+    // for overlaps sort left to right.
     function sortPatchesComicOrder(arr) {
       return arr.slice().sort((a, b) => {
         const aTop = a.top, aBot = a.top + a.height, aLeft = a.left;
         const bTop = b.top, bBot = b.top + b.height, bLeft = b.left;
-        // If a is completely above b
         if (aBot <= bTop) return -1;
-        // If b is completely above a
         if (bBot <= aTop) return 1;
-        // If they overlap vertically, read left-to-right
         if (aLeft !== bLeft) return aLeft - bLeft;
-        // as fallback, by top
         return aTop - bTop;
       });
     }
 
-    // LocalStorage keys:
     const LS_STATE = 'quilt_manual_patches_v2b';
     const LS_IMAGE = 'quilt_manual_image_v2b';
     const LS_IMGNAME = 'quilt_manual_filename_v2b';
@@ -182,15 +193,17 @@
       imgH = quiltImg.naturalHeight;
       patchRects.setAttribute('width', imgW);
       patchRects.setAttribute('height', imgH);
-      patchRects.style.width = quiltImg.width + 'px';
-      patchRects.style.height = quiltImg.height + 'px';
+      patchRects.style.width = imgW + 'px';
+      patchRects.style.height = imgH + 'px';
       patchRects.style.position = 'absolute';
-      patchRects.style.left = quiltImg.offsetLeft + "px";
-      patchRects.style.top = quiltImg.offsetTop + "px";
-      overlayBtns.style.width = quiltImg.width + 'px';
-      overlayBtns.style.height = quiltImg.height + 'px';
-      overlayBtns.style.left = patchRects.style.left;
-      overlayBtns.style.top = patchRects.style.top;
+      patchRects.style.left = '0px';
+      patchRects.style.top = '0px';
+      overlayBtns.style.width = imgW + 'px';
+      overlayBtns.style.height = imgH + 'px';
+      overlayBtns.style.left = '0px';
+      overlayBtns.style.top = '0px';
+      quiltImg.style.width = imgW + 'px';
+      quiltImg.style.height = imgH + 'px';
       drawOverlays();
       patchCountInfo.textContent = `${patches.length} patches`;
       downloadBtn.disabled = patches.length === 0;
@@ -277,14 +290,12 @@
         rect.title = (p.label||"") + "\n" + (p.desc||"");
         patchRects.appendChild(rect);
 
-        if (imgW > 0 && quiltImg.width > 0) {
-          const scaleX = quiltImg.width / imgW;
-          const scaleY = quiltImg.height / imgH;
+        if (imgW > 0) {
           const btn = document.createElement('button');
           btn.className = "edit-button";
           btn.innerHTML = "&#9998;";
-          btn.style.left = (p.left*scaleX + p.width*scaleX - 29) + "px";
-          btn.style.top = (p.top*scaleY + 7) + "px";
+          btn.style.left = (p.left + p.width - 29) + "px";
+          btn.style.top = (p.top + 7) + "px";
           btn.title = "Edit patch";
           btn.onclick = function(ev) {
             ev.stopPropagation();
