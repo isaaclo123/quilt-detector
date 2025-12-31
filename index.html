@@ -198,11 +198,13 @@
     }
 
     function openModal(idx) {
+      // --- Fix for stuck hover/active class on mobile ---
+      document.querySelectorAll('.patch-rect.active').forEach(el => el.classList.remove('active'));
+      // existing code below...
       modalIdx = idx;
       renderModal(idx, null, true);
       modalOpen = true;
       modal.classList.add('active');
-      // Animate fade in
       setTimeout(()=>{
         const card = modalContentWrap.querySelector('.modal-content-anim');
         if(card) card.classList.add('modal-fadein');
