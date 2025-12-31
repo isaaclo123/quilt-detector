@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quilt Patch Display (Modal Fade In/Out, Glow Highlight)</title>
+  <title>Quilt Patch Display (Modal Fade In/Out, Glow Highlight, Animated Slides)</title>
   <style>
     html, body {
       height: 100%; margin: 0; padding: 0; background: #222; font-family: sans-serif;
@@ -156,6 +156,7 @@
     let modalIdx = 0;
     let animating = false;
     let modalOpen = false;
+    let cleanupModalTimeout = null;
 
     function getDisplayedImageRect(img) {
       const container = img.parentElement;
@@ -185,10 +186,10 @@
         rect.setAttribute('width', w); rect.setAttribute('height', h);
         rect.setAttribute('tabindex',0);
         rect.setAttribute('data-idx',idx);
-        rect.addEventListener('mouseover', ()=>rect.classList.add('active'));
-        rect.addEventListener('mouseout', ()=>rect.classList.remove('active'));
-        rect.addEventListener('focus', ()=>rect.classList.add('active'));
-        rect.addEventListener('blur', ()=>rect.classList.remove('active'));
+        rect.addEventListener('mouseover', ()=>{ if (!modalOpen) rect.classList.add('active'); });
+        rect.addEventListener('mouseout', ()=> rect.classList.remove('active'));
+        rect.addEventListener('focus', ()=>{ if (!modalOpen) rect.classList.add('active'); });
+        rect.addEventListener('blur', ()=> rect.classList.remove('active'));
         rect.addEventListener('click', (e)=>{
           openModal(idx);
           e.stopPropagation();
@@ -198,31 +199,36 @@
     }
 
     function openModal(idx) {
-      // Remove active class and blur all patch rects (for touch and keyboard)
+      // Prevent race-condition: clear any pending cleanup of modal contents
+      if (cleanupModalTimeout) {
+        clearTimeout(cleanupModalTimeout);
+        cleanupModalTimeout = null;
+      }
+      // Remove .active class and blur all patch rects to fix stuck hover/focus
       document.querySelectorAll('.patch-rect').forEach(el => {
         el.classList.remove('active');
-        el.blur(); // Remove focus
+        el.blur();
       });
-      // Optionally focus an element inside the modal to steal focus (accessibility)
-      setTimeout(() => {
-        const closeBtn = modalContentWrap.querySelector('.modal-close');
-        if (closeBtn) closeBtn.focus();
-      }, 50);
-      // ...existing code follows...
-      modalIdx = idx;
-      renderModal(idx, null, true);
+      // Show modal
+      modalIdx = (idx + patches.length) % patches.length;
+      renderModal(modalIdx, null, true);
       modalOpen = true;
       modal.classList.add('active');
-      setTimeout(()=>{
-        const card = modalContentWrap.querySelector('.modal-content-anim');
-        if(card) card.classList.add('modal-fadein');
-      },10);
+    }
+
+    /** Slide to desired modal index with animation. For arrows/keys. */
+    function slideToModal(newIdx, direction) {
+      if (animating || newIdx === modalIdx) return;
+      renderModal(newIdx, direction, false);
+      modalIdx = (newIdx + patches.length) % patches.length;
     }
 
     function closeModal() {
+      // Defensive: remove focus/highlight from all patches
       document.querySelectorAll('.patch-rect').forEach(el => el.blur());
-      if(animating) return;
-      // Animate lightbox modal fade out, then remove from view
+      // Remove previous timeout if any
+      if (cleanupModalTimeout) clearTimeout(cleanupModalTimeout);
+      // Animate modal content fade out, then remove from view
       const card = modalContentWrap.querySelector('.modal-content-anim');
       if(card) {
         card.classList.remove('modal-fadein');
@@ -230,18 +236,17 @@
       }
       modal.classList.remove('active');
       modalOpen = false;
-      // Remove the modal-content-anim element after fade
-      setTimeout(()=>{
+      cleanupModalTimeout = setTimeout(()=>{
         if(card && card.parentNode) card.parentNode.removeChild(card);
         modalContentWrap.innerHTML = '';
+        cleanupModalTimeout = null;
       },340);
     }
 
-    // Modal slide in/out animation while maintaining patch glow fade and supporting fade in/out for lightbox appear/disappear
-    function renderModal(idx, direction, isEnter) {
-      if(animating) return;
+    // Animated slide-in/out for modal, supporting left/right/appear transitions
+    function renderModal(idx, direction=null, isEnter=true) {
+      if (animating) return;
       idx = (idx + patches.length) % patches.length;
-      modalIdx = idx;
       const p = patches[idx];
       const prevCard = modalContentWrap.querySelector('.modal-content-anim');
       const card = document.createElement('div');
@@ -261,6 +266,7 @@
       slideDiv.appendChild(canvas);
       renderPatchToCanvas(canvas, p, wh);
       card.style.opacity = "1";
+      // Animation: slide in/out from left/right; fade in/out if entry/disappear
       let startTransform = "translate(-50%,-50%)";
       let endTransform = "translate(-50%,-50%)";
       if(direction === 'left')      startTransform = "translate(80vw,-50%)";
@@ -270,11 +276,21 @@
       card.style.zIndex = "3";
       modalContentWrap.appendChild(card);
 
-      card.querySelector('#modalClose').addEventListener('click', closeModal);
+      // Always set event on new X button
+      card.querySelector('#modalClose').onclick = (e) => {
+        e.stopPropagation();
+        closeModal();
+      };
 
-      // FADE IN/OUT for entry/exit of lightbox (enter=first show, no prevCard)
-      if(isEnter) {
+      // Focus fix for accessibility, after animation is done
+      setTimeout(() => {
+        card.querySelector('.modal-close').focus();
+      }, 350);
+
+      // Entry/slide animations
+      if(isEnter || !prevCard) {
         card.classList.add('modal-fadein');
+        if(prevCard && prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
       } else if(direction && prevCard) {
         animating = true;
         prevCard.style.transition = "transform 0.47s cubic-bezier(.85,.26,.16,1.34), opacity 0.37s cubic-bezier(.5,.4,.18,1.0)";
@@ -320,46 +336,36 @@
     }
 
     modalPrev.addEventListener('click', ()=>{
-      if(animating) return;
-      renderModal((modalIdx-1+patches.length)%patches.length,'right');
+      if(!modalOpen || animating) return;
+      slideToModal((modalIdx-1+patches.length) % patches.length, 'right');
     });
     modalNext.addEventListener('click', ()=>{
-      if(animating) return;
-      renderModal((modalIdx+1)%patches.length,'left');
+      if(!modalOpen || animating) return;
+      slideToModal((modalIdx+1) % patches.length, 'left');
     });
 
     window.addEventListener('keydown', e => {
-      if(modalOpen && modal.classList.contains('active')) {
+      if(modalOpen && modal.classList.contains('active') && !animating) {
         if(e.key==="Escape"||e.key==="Esc"){ closeModal(); }
-        else if((e.key==="ArrowLeft"||e.key==="Left")&&!animating){ renderModal((modalIdx-1+patches.length)%patches.length,'right'); }
-        else if((e.key==="ArrowRight"||e.key==="Right")&&!animating){ renderModal((modalIdx+1)%patches.length,'left'); }
+        else if(e.key==="ArrowLeft"||e.key==="Left"){ slideToModal((modalIdx-1+patches.length)%patches.length,'right'); }
+        else if(e.key==="ArrowRight"||e.key==="Right"){ slideToModal((modalIdx+1)%patches.length,'left'); }
       }
     });
 
-    // --- Fix for mobile click/tap event "bleed through" on modal ---
-
-    // Prevent ALL pointer/touch/mouse events from passing through modal when active
+    // Modal backdrop: only close when clicking backdrop, stop event for dialog/interior
     function stopEvent(e) {
       e.stopPropagation();
       e.preventDefault();
     }
-
-    // Block background interaction for all relevant event types
-    ['touchstart','touchmove','touchend','pointerdown','pointerup','mousedown','mouseup','click'].forEach(evt => {
+    ['touchstart','mousedown'].forEach(evt => {
       modal.addEventListener(evt, function(e){
-        if(modal.classList.contains('active')) {
-          // Only allow closing modal when clicking backdrop (modal, but not modal content)
-          if(e.target === modal) {
-            if(evt === 'mousedown' || evt === 'touchstart' || evt === 'pointerdown') {
-              closeModal();
-              stopEvent(e);
-            }
-          } else {
-            // Interacting with modal children (actual dialog) should NOT close modal or affect quilt below
-            stopEvent(e);
-          }
+        // Only close when tapping/clicking the backdrop (not content/dialog/buttons)
+        if(modal.classList.contains('active') && e.target === modal) {
+          closeModal();
+          e.stopPropagation();
+          e.preventDefault();
         }
-      }, {capture: true}); // Use capture phase to grab events before they can reach children or bubble
+      }, {capture: false}); // Use bubble phase so inner controls work!
     });
 
     window.addEventListener('resize', ()=>{
