@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quilt Patch Detector & JSON Export (Show Edited Patches)</title>
+  <title>Quilt Patch Detector & JSON Export (Left-to-Right Then Top-to-Down)</title>
   <style>
     body { background: #232; color: #eee; font-family: sans-serif; padding: 2em;}
     #quilt-bg { max-width: 100%; height: auto; }
@@ -92,6 +92,31 @@
     </div>
   </div>
   <script>
+    // --- Sorting function: left to right, then top to down within column ---
+    function sortPatchesLeftToRightThenTop(patchesArr, colTolerance=12) {
+      // Copy array and sort by left coordinate (primary)
+      let sorted = [...patchesArr];
+      sorted.sort((a, b) => a.left - b.left);
+
+      // Assign a "col" group based on colTolerance
+      let lastLeft = null, colNum = 0;
+      sorted.forEach((p, idx) => {
+        if (lastLeft === null || Math.abs(p.left - lastLeft) > colTolerance) {
+          colNum += 1;
+          lastLeft = p.left;
+        }
+        p._colSortGroup = colNum;
+      });
+      // Now sort by col group then by top
+      sorted.sort((a, b) =>
+        (a._colSortGroup - b._colSortGroup) ||
+        (a.top - b.top)
+      );
+      // Remove the temp col group
+      sorted.forEach(p => { delete p._colSortGroup; });
+      return sorted;
+    }
+
     // --- DOM refs ---
     const fileInput = document.getElementById('fileInput');
     const quiltImg = document.getElementById('quilt-bg');
@@ -119,7 +144,7 @@
     let quiltImageHash = null;
     let restoringOnLoad = false;
     let loadedFileName = null;
-    let originalVals = {}; // {idx: {label,desc}}
+    let originalVals = {};
 
     function stateLocalKey() {
       return quiltImageHash ? `quilt-detect-v2-${quiltImageHash}` : null;
@@ -370,6 +395,9 @@
         if(filtered.length>0) patches = filtered;
         else if(patches.length>30) patches = patches.sort((a,b)=>a.area-b.area).slice(0, 30);
       }
+      // --- SORT PATCHES left to right then top ---
+      patches = sortPatchesLeftToRightThenTop(patches);
+
       computeOriginalVals();
       drawOverlays();
       updateJSONResult();
@@ -379,17 +407,14 @@
     }
 
     function computeOriginalVals() {
-      // For current session/or detected patches
       originalVals = {};
       patches.forEach((p, idx) => {
-        // Only mark as edited if label or desc differs from default
         let autoLabel = `Patch ${idx+1}`;
         let autoDesc  = `Auto-detected patch #${idx+1}`;
         originalVals[idx] = {
           label: autoLabel,
           desc: autoDesc
         };
-        // If _edited field is missing, initialize it as "false"
         if (typeof p._edited === "undefined") p._edited = false;
         if (
           (typeof p.label !== "undefined" && p.label !== autoLabel) ||
@@ -446,7 +471,6 @@
     });
     btnSave.addEventListener('click', ()=>{
       if(currentlyEditing!=null && patches[currentlyEditing]) {
-        // Default values
         let autoLabel = `Patch ${+currentlyEditing+1}`;
         let autoDesc  = `Auto-detected patch #${+currentlyEditing+1}`;
         const newLabel = editTitle.value;
@@ -477,26 +501,20 @@
       }
     });
 
+    // --- Sort before display/export
     function updateJSONResult() {
+      // Always use sorted patches for display
+      const sortedPatches = sortPatchesLeftToRightThenTop(patches);
       result.textContent = JSON.stringify(
-        patches.map(({left,top,width,height,label,desc})=>({left,top,width,height,label,desc})),
+        sortedPatches.map(({left,top,width,height,label,desc}) => ({left,top,width,height,label,desc})),
         null, 2
       );
     }
-    window.addEventListener('keydown', e=>{
-      if(editbox.style.display==="block" && (e.key==="Escape"||e.key==="Esc")) {
-        btnCancel.click();
-      }
-    });
-    window.addEventListener('mousedown', e=>{
-      if(editbox.style.display === "block" && !editbox.contains(e.target)) {
-        btnCancel.click();
-      }
-    });
 
     downloadBtn.onclick = ()=> {
+      const sortedPatches = sortPatchesLeftToRightThenTop(patches);
       const json = JSON.stringify(
-        patches.map(({left,top,width,height,label,desc})=>({left,top,width,height,label,desc}))
+        sortedPatches.map(({left,top,width,height,label,desc})=>({left,top,width,height,label,desc}))
       );
       const blob = new Blob([json], {type: 'application/json'});
       const url = URL.createObjectURL(blob);
@@ -530,6 +548,17 @@
     }
 
     document.addEventListener('DOMContentLoaded', tryAutoReloadLastImage);
+    window.addEventListener('keydown', e=>{
+      if(editbox.style.display==="block" && (e.key==="Escape"||e.key==="Esc")) {
+        btnCancel.click();
+      }
+    });
+    window.addEventListener('mousedown', e=>{
+      if(editbox.style.display === "block" && !editbox.contains(e.target)) {
+        btnCancel.click();
+      }
+    });
+
   </script>
 </body>
 </html>
