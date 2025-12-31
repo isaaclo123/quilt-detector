@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Quilt Patch Detector & JSON Export (Show Edited Patches)</title>
+  <style>
+    body { background: #232; color: #eee; font-family: sans-serif; padding: 2em;}
+    #quilt-bg { max-width: 100%; height: auto; }
+    #patch-rects { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 10; }
+    .patch-rect {
+      stroke: #51e85a; stroke-width: 3px; fill: none; cursor:pointer; pointer-events: all;
+      transition:
+        stroke 0.26s cubic-bezier(.39,1.1,0,.88),
+        stroke-width 0.15s cubic-bezier(.45,.8,.2,1.12),
+        filter 0.24s cubic-bezier(.47,1.1,.3,.85);
+      filter: none;
+    }
+    .patch-rect.edited {
+      stroke: #ffaa3b;
+      filter: drop-shadow(0 2px 7px #fed98d99);
+    }
+    .patch-rect.selected { stroke:#e7bc1d; stroke-width:5px; }
+    #result { width: 100%; background: #181; color: #fff; min-height: 4em; margin-top:1em; font-size:.95em;}
+    #downloadBtn { padding:.5em 1em; font-size:1em; background: #32b338; color:#fff; border:none; border-radius:6px; cursor:pointer;}
+    #downloadBtn:disabled { background:#444; }
+    #resetBtn { margin-left:1em; padding:.5em 1em; font-size:1em; background: #bf1f1f; color:#fff; border:none; border-radius:6px; cursor:pointer;}
+    #threshLabel {font-weight:bold; color:#6f8;}
+    #controls {margin-bottom:14px;}
+    #threshInput { width: 3.6em; font-size:1em; border-radius:4px; border:1px solid #555; text-align:right; margin-left:7px; box-shadow:none;}
+    #editbox {
+      position: fixed; left: 50%; top: 40%; z-index:5001; transform: translate(-50%, 0);
+      background: #1d2128; color: #eee; border: 2px solid #5ba9fa; border-radius: 10px;
+      box-shadow: 0 4px 32px #000a; padding: 1.2em 1em 1em 1em; min-width: 230px; max-width: 86vw;
+      display: none;
+    }
+    #editbox input, #editbox textarea {
+      width: 100%; padding: 0.3em 0.5em; font-size:1.1em; margin-bottom:.8em; border-radius: 0.4em; border:1px solid #99b;
+      color: #211; background: #eff1fa; font-family: inherit; box-sizing: border-box; outline:none; resize:vertical;
+    }
+    #editbox textarea { min-height:2.1em; }
+    #editbox label { font-weight:bold; color:#9df; }
+    #editbox .e-row { margin-bottom:.4em;}
+    #editbox .e-buttons { text-align:right; }
+    #editbox button { padding:0.4em 1.1em; border-radius:7px; border:none; background:#51e85a; color:#201; font-weight:bold; cursor:pointer; margin-left:.7em; }
+    #editbox button.cancel {background:#aaa; color:#333;}
+    #editbox button.delete {background:#e94e29; color:#fff;}
+    #editbox button:focus {outline:2px solid #7af;}
+    #editbox-title { margin-bottom: 1.1em; font-weight:bold; font-size:1.14em; color:#ffb756;}
+    #patchCountInfo { margin-left:2em; font-weight:bold;}
+    #quilt-area {position:relative;}
+    #lastReloadedTag {color:#6fc; font-size:.97em; margin-left:1.5em;}
+    #quiltFileInfo {color:#6ad; font-size:0.97em; margin-left:1em;}
+  </style>
+</head>
+<body>
+  <h2>Step 1: Autodetect Quilt Patches & Export to JSON</h2>
+  <div id="controls">
+    <label>Select quilt image: <input type="file" id="fileInput" accept="image/*"></label>
+    <span style="margin-left:2em">
+      Threshold:
+      <input type="range" id="threshSlider" min="50" max="220" value="120" step="1">
+      <input type="number" id="threshInput" min="50" max="220" value="120">
+      <span id="threshLabel">120</span>
+    </span>
+    <button id="resetBtn" title="Reset all, including localstorage">Reset</button>
+    <span id="lastReloadedTag" style="display:none;"></span>
+    <span id="quiltFileInfo"></span>
+  </div>
+  <div id="quilt-area" style="position:relative; margin-top:1em; display:inline-block;">
+    <img id="quilt-bg" alt="Selected Quilt" style="display:none;">
+    <svg id="patch-rects"></svg>
+  </div>
+  <div style="margin-top:1em">
+    <button id="downloadBtn" disabled>Download Detected Patches as JSON</button>
+    <span id="patchCountInfo"></span>
+  </div>
+  <pre id="result"></pre>
+  <div id="editbox">
+    <div id="editbox-title">Edit Quilt Patch Info</div>
+    <div class="e-row">
+      <label for="edit-title">Title</label>
+      <input type="text" id="edit-title" maxlength="100">
+    </div>
+    <div class="e-row">
+      <label for="edit-desc">Description</label>
+      <textarea id="edit-desc" rows="2" maxlength="400"></textarea>
+    </div>
+    <div class="e-buttons">
+      <button id="btnSave">Save</button>
+      <button class="delete" id="btnDelete">Delete Patch</button>
+      <button class="cancel" id="btnCancel">Cancel</button>
+    </div>
+  </div>
+  <script>
+    // --- DOM refs ---
+    const fileInput = document.getElementById('fileInput');
+    const quiltImg = document.getElementById('quilt-bg');
+    const patchRects = document.getElementById('patch-rects');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const result = document.getElementById('result');
+    const threshSlider = document.getElementById('threshSlider');
+    const threshInput = document.getElementById('threshInput');
+    const threshLabel = document.getElementById('threshLabel');
+    const patchCountInfo = document.getElementById('patchCountInfo');
+    const quiltArea = document.getElementById('quilt-area');
+    const editbox = document.getElementById('editbox');
+    const btnSave = document.getElementById('btnSave');
+    const btnDelete = document.getElementById('btnDelete');
+    const btnCancel = document.getElementById('btnCancel');
+    const editTitle = document.getElementById('edit-title');
+    const editDesc = document.getElementById('edit-desc');
+    const lastReloadedTag = document.getElementById('lastReloadedTag');
+    const quiltFileInfo = document.getElementById('quiltFileInfo');
+
+    let patches = [];
+    let w=0, h=0, imgdata, gray;
+    let currentlyEditing = null;
+    let quiltImageHash = null;
+    let restoringOnLoad = false;
+    let loadedFileName = null;
+    let originalVals = {}; // {idx: {label,desc}}
+
+    function stateLocalKey() {
+      return quiltImageHash ? `quilt-detect-v2-${quiltImageHash}` : null;
+    }
+    function saveLocal() {
+      if (!quiltImageHash) return;
+      const state = {
+        patches,
+        threshValue: +threshSlider.value,
+        imageDataUrl: quiltImg.src || null,
+        fileName: loadedFileName || quiltImg.dataset.filename || null
+      };
+      try {
+        localStorage.setItem(stateLocalKey(), JSON.stringify(state));
+        localStorage.setItem('quilt-detect-v2-lastused', stateLocalKey());
+        if(state.imageDataUrl)
+          localStorage.setItem('quilt-detect-v2-lastimg', state.imageDataUrl);
+        if(state.fileName)
+          localStorage.setItem('quilt-detect-v2-lastimgname', state.fileName);
+      } catch(e){}
+    }
+    function resetLocal() {
+      if (!quiltImageHash) return;
+      try { localStorage.removeItem(stateLocalKey()); } catch(e){}
+      try { localStorage.removeItem('quilt-detect-v2-lastused'); localStorage.removeItem('quilt-detect-v2-lastimg'); localStorage.removeItem('quilt-detect-v2-lastimgname');} catch(e){}
+    }
+    function loadLocal(hashOverride) {
+      const key = hashOverride || stateLocalKey();
+      if (!key) return null;
+      const json = localStorage.getItem(key);
+      if(json) try {
+        return JSON.parse(json);
+      } catch(e){}
+      return null;
+    }
+    function tryAutoReloadLastImage() {
+      const lastKey = localStorage.getItem('quilt-detect-v2-lastused');
+      const lastImageDataURL = localStorage.getItem('quilt-detect-v2-lastimg');
+      const lastFileName = localStorage.getItem('quilt-detect-v2-lastimgname');
+      if(lastImageDataURL && lastKey) {
+        restoringOnLoad = true;
+        quiltImageHash = lastKey.replace('quilt-detect-v2-','');
+        loadedFileName = lastFileName || null;
+        quiltImg.src = lastImageDataURL;
+        quiltImg.style.display = 'block';
+        if(lastFileName)
+          quiltImg.dataset.filename = lastFileName;
+        lastReloadedTag.textContent = "Last image auto-reloaded";
+        lastReloadedTag.style.display = "inline";
+        quiltFileInfo.textContent = lastFileName ? `[${lastFileName}]` : '';
+      }
+    }
+
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        patches = [];
+        originalVals = {};
+        patchRects.innerHTML = '';
+        result.textContent = '';
+        patchCountInfo.textContent = '';
+        downloadBtn.disabled = true;
+        currentlyEditing = null;
+        restoringOnLoad = false;
+        quiltImg.src = ev.target.result;
+        quiltImg.style.display = 'block';
+        quiltImageHash = hashString(file.name + file.size + file.lastModified);
+        loadedFileName = file.name;
+        quiltImg.dataset.filename = file.name;
+        lastReloadedTag.style.display = 'none';
+        quiltFileInfo.textContent = `[${file.name}]`;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    quiltImg.onload = function() {
+      w = quiltImg.naturalWidth;
+      h = quiltImg.naturalHeight;
+      patchRects.setAttribute('width', w);
+      patchRects.setAttribute('height', h);
+      patchRects.style.width = quiltImg.width + 'px';
+      patchRects.style.height = quiltImg.height + 'px';
+      patchRects.style.position = 'absolute';
+      patchRects.style.left = quiltImg.offsetLeft + "px";
+      patchRects.style.top = quiltImg.offsetTop + "px";
+      patches = [];
+      originalVals = {};
+      patchRects.innerHTML = '';
+      result.textContent = '';
+      patchCountInfo.textContent = '';
+      downloadBtn.disabled = true;
+      currentlyEditing = null;
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(quiltImg, 0, 0);
+      imgdata = ctx.getImageData(0,0,w,h).data;
+      gray = getGrayscale(imgdata, w, h);
+      handlePossibleLocal();
+    };
+
+    function handlePossibleLocal() {
+      const lstate = loadLocal();
+      if (restoringOnLoad && lstate && lstate.patches && Array.isArray(lstate.patches)) {
+        patches = lstate.patches;
+        if(lstate.threshValue != null) {
+          threshSlider.value = lstate.threshValue;
+          threshInput.value = lstate.threshValue;
+          threshLabel.textContent = lstate.threshValue;
+        }
+        if(lstate.fileName) {
+          loadedFileName = lstate.fileName;
+          quiltFileInfo.textContent = `[${lstate.fileName}]`;
+        }
+        computeOriginalVals();
+        drawOverlays();
+        updateJSONResult();
+        patchCountInfo.textContent = `${patches.length} patches detected (from saved session)`;
+        downloadBtn.disabled = (patches.length === 0);
+        restoringOnLoad = false;
+      } else if (lstate && lstate.patches && Array.isArray(lstate.patches)) {
+        patches = lstate.patches;
+        if(lstate.threshValue != null) {
+          threshSlider.value = lstate.threshValue;
+          threshInput.value = lstate.threshValue;
+          threshLabel.textContent = lstate.threshValue;
+        }
+        if(lstate.fileName) {
+          loadedFileName = lstate.fileName;
+          quiltFileInfo.textContent = `[${lstate.fileName}]`;
+        }
+        computeOriginalVals();
+        drawOverlays();
+        updateJSONResult();
+        patchCountInfo.textContent = `${patches.length} patches detected (from saved session)`;
+        downloadBtn.disabled = (patches.length === 0);
+      } else {
+        updateDetection();
+      }
+    }
+
+    threshSlider.addEventListener('input', e=>{
+      threshLabel.textContent = threshSlider.value;
+      threshInput.value = threshSlider.value;
+      updateDetection();
+    });
+    threshInput.addEventListener('change', e=>{
+      let val = +threshInput.value;
+      if(isNaN(val)) val = 120;
+      if(val < +threshSlider.min) val = +threshSlider.min;
+      if(val > +threshSlider.max) val = +threshSlider.max;
+      threshInput.value = val;
+      threshSlider.value = val;
+      threshLabel.textContent = val;
+      updateDetection();
+    });
+
+    function luminance(r, g, b) { return 0.2126*r + 0.7152*g + 0.0722*b; }
+    function getGrayscale(imgData, w, h) {
+      const gray = new Uint8ClampedArray(w*h);
+      for(let i=0; i<w*h; ++i) {
+        const j = 4*i;
+        gray[i] = luminance(imgData[j], imgData[j+1], imgData[j+2]);
+      }
+      return gray;
+    }
+    function segmentRegions(gray, w, h, threshold=120) {
+      const bin = new Uint8ClampedArray(w*h);
+      for(let i=0; i<w*h; ++i) bin[i] = gray[i] > threshold ? 1 : 0;
+      const regions = [];
+      const visited = new Uint8ClampedArray(w*h);
+      const neighbors = [-1,1,-w,w];
+      for(let i=0; i<bin.length; ++i){
+        if(bin[i] && !visited[i]) {
+          const reg = [];
+          const queue = [i];
+          visited[i]=1;
+          while(queue.length) {
+            const pix = queue.pop();
+            reg.push(pix);
+            for(let n of neighbors){
+              const npix = pix+n;
+              if(npix>=0&&npix<bin.length && bin[npix] && !visited[npix]) {
+                visited[npix]=1; queue.push(npix);
+              }
+            }
+          }
+          if(reg.length>=300) regions.push(reg);
+        }
+      }
+      return regions;
+    }
+    function computeMedian(arr) {
+      const sorted = arr.slice().sort((a,b)=>a-b);
+      const mid = Math.floor(sorted.length/2);
+      return sorted.length%2===0
+        ? (sorted[mid-1]+sorted[mid])/2
+        : sorted[mid];
+    }
+    function touchesImageEdge(patch, width, height, padding=2) {
+      if (patch.left<=padding || patch.top<=padding ||
+          patch.left+patch.width>=width-padding ||
+          patch.top+patch.height>=height-padding)
+        return true;
+      return false;
+    }
+
+    function updateDetection() {
+      const threshold = +threshSlider.value;
+      threshLabel.textContent = threshold;
+      threshInput.value = threshold;
+      if (!gray) return;
+      let regions = segmentRegions(gray, w, h, threshold);
+      if(regions.length<2||regions.length>80) {
+        let regions2 = segmentRegions(gray, w, h, 150);
+        if(regions2.length>=2&&regions2.length<80) regions = regions2;
+      }
+      const prevPatches = (patches||[]).map(x=>({...x}));
+      patches = regions.map((reg, idx) => {
+        let minX=w,maxX=0,minY=h,maxY=0;
+        reg.forEach(i=>{
+          let x=i%w, y=(i/w)|0;
+          if(x<minX)minX=x; if(x>maxX)maxX=x;
+          if(y<minY)minY=y; if(y>maxY)maxY=y;
+        });
+        let prev = prevPatches.find(pp =>
+          Math.abs(pp.left-minX)<=2 && Math.abs(pp.top-minY)<=2 &&
+          Math.abs(pp.width-(maxX-minX+1))<=2 && Math.abs(pp.height-(maxY-minY+1))<=2
+        );
+        return {
+          left:minX, top:minY, width:(maxX-minX+1), height:(maxY-minY+1),
+          label: (prev && prev.label) ? prev.label : `Patch ${idx+1}`,
+          desc: (prev && prev.desc) ? prev.desc : `Auto-detected patch #${idx+1}`,
+          area: (maxX-minX+1)*(maxY-minY+1),
+          _edited: (prev && prev._edited) ? prev._edited : false
+        };
+      }).filter(r=>r.width > 15 && r.height > 15);
+
+      if(patches.length>0) {
+        const areas = patches.map(p=>p.area);
+        const medArea = computeMedian(areas);
+        const maxGoodArea = medArea*2.5;
+        const filtered = patches.filter(p=>
+          p.area<=maxGoodArea && !touchesImageEdge(p, w, h)
+        );
+        if(filtered.length>0) patches = filtered;
+        else if(patches.length>30) patches = patches.sort((a,b)=>a.area-b.area).slice(0, 30);
+      }
+      computeOriginalVals();
+      drawOverlays();
+      updateJSONResult();
+      patchCountInfo.textContent = `${patches.length} patches detected`;
+      downloadBtn.disabled = (patches.length === 0);
+      saveLocal();
+    }
+
+    function computeOriginalVals() {
+      // For current session/or detected patches
+      originalVals = {};
+      patches.forEach((p, idx) => {
+        // Only mark as edited if label or desc differs from default
+        let autoLabel = `Patch ${idx+1}`;
+        let autoDesc  = `Auto-detected patch #${idx+1}`;
+        originalVals[idx] = {
+          label: autoLabel,
+          desc: autoDesc
+        };
+        // If _edited field is missing, initialize it as "false"
+        if (typeof p._edited === "undefined") p._edited = false;
+        if (
+          (typeof p.label !== "undefined" && p.label !== autoLabel) ||
+          (typeof p.desc !== "undefined" && p.desc !== autoDesc)
+        ) p._edited = true;
+      });
+    }
+
+    function drawOverlays() {
+      patchRects.innerHTML = "";
+      patches.forEach((p, idx) => {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        rect.setAttribute('class','patch-rect' + (p._edited?' edited':''));
+        rect.setAttribute('x', p.left); rect.setAttribute('y', p.top);
+        rect.setAttribute('width', p.width); rect.setAttribute('height', p.height);
+        rect.setAttribute('data-idx', idx);
+        rect.tabIndex = 0;
+        rect.title = (p.label||"") + "\n" + (p.desc||"");
+        rect.addEventListener('click', (ev)=>{
+          setSelectedRect(idx);
+          editPatch(idx);
+        });
+        rect.addEventListener('keydown', (ev)=>{
+          if(ev.key==="Enter"||ev.key===" "){
+            setSelectedRect(idx);
+            editPatch(idx);
+          }
+        });
+        patchRects.appendChild(rect);
+      });
+      setSelectedRect(null);
+    }
+
+    function setSelectedRect(idx) {
+      Array.from(patchRects.childNodes).forEach((el, i)=>{
+        el.classList.toggle('selected', i===idx);
+      });
+    }
+
+    function editPatch(idx) {
+      if(idx==null || !patches[idx]) return;
+      currentlyEditing = idx;
+      const patch = patches[idx];
+      editTitle.value = patch.label || "";
+      editDesc.value = patch.desc || "";
+      editbox.style.display = 'block';
+      setTimeout(()=>editTitle.focus(),45);
+    }
+
+    btnCancel.addEventListener('click', ()=>{
+      editbox.style.display = 'none';
+      setSelectedRect(null);
+      currentlyEditing = null;
+    });
+    btnSave.addEventListener('click', ()=>{
+      if(currentlyEditing!=null && patches[currentlyEditing]) {
+        // Default values
+        let autoLabel = `Patch ${+currentlyEditing+1}`;
+        let autoDesc  = `Auto-detected patch #${+currentlyEditing+1}`;
+        const newLabel = editTitle.value;
+        const newDesc = editDesc.value;
+        patches[currentlyEditing].label = newLabel || autoLabel;
+        patches[currentlyEditing].desc = newDesc  || "";
+        patches[currentlyEditing]._edited =
+          (patches[currentlyEditing].label !== autoLabel) ||
+          (patches[currentlyEditing].desc !== autoDesc);
+
+        updateJSONResult();
+        drawOverlays();
+        saveLocal();
+      }
+      editbox.style.display = 'none';
+      setSelectedRect(null);
+      currentlyEditing = null;
+    });
+    btnDelete.addEventListener('click', ()=>{
+      if(currentlyEditing!=null && patches[currentlyEditing]) {
+        patches.splice(currentlyEditing, 1);
+        editbox.style.display = 'none';
+        setSelectedRect(null);
+        updateJSONResult();
+        drawOverlays();
+        saveLocal();
+        currentlyEditing = null;
+      }
+    });
+
+    function updateJSONResult() {
+      result.textContent = JSON.stringify(
+        patches.map(({left,top,width,height,label,desc})=>({left,top,width,height,label,desc})),
+        null, 2
+      );
+    }
+    window.addEventListener('keydown', e=>{
+      if(editbox.style.display==="block" && (e.key==="Escape"||e.key==="Esc")) {
+        btnCancel.click();
+      }
+    });
+    window.addEventListener('mousedown', e=>{
+      if(editbox.style.display === "block" && !editbox.contains(e.target)) {
+        btnCancel.click();
+      }
+    });
+
+    downloadBtn.onclick = ()=> {
+      const json = JSON.stringify(
+        patches.map(({left,top,width,height,label,desc})=>({left,top,width,height,label,desc}))
+      );
+      const blob = new Blob([json], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'quilt-patches.json';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{document.body.removeChild(a); URL.revokeObjectURL(url);},100);
+    };
+
+    resetBtn.onclick = function() {
+      if (confirm("Reset everything? This will clear all detected patches and local saved data for this image.")) {
+        resetLocal();
+        lastReloadedTag.style.display = 'none';
+        quiltFileInfo.textContent = '';
+        patches = [];
+        originalVals = {};
+        patchRects.innerHTML='';
+        result.textContent = '';
+        patchCountInfo.textContent = '';
+        downloadBtn.disabled = true;
+        currentlyEditing = null;
+        if (quiltImg.src && quiltImg.complete) updateDetection();
+      }
+    };
+
+    function hashString(str) {
+      let hash = 5381, i = str.length;
+      while(i) hash = (hash * 33) ^ str.charCodeAt(--i);
+      return (hash>>>0).toString(36);
+    }
+
+    document.addEventListener('DOMContentLoaded', tryAutoReloadLastImage);
+  </script>
+</body>
+</html>
