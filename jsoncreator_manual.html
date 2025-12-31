@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Manual Quilt Patch Selector – Edit Buttons and Drag Working</title>
+  <style>
+    body { background: #232; color: #eee; font-family: sans-serif; padding: 2em;}
+    #quilt-area { position:relative; display:inline-block; }
+    #quilt-bg { display:block; max-width: 700px; max-height: 70vh; }
+    #patch-rects, .overlay-buttons {
+      position: absolute; left: 0; top: 0; z-index: 15;
+    }
+    #patch-rects { pointer-events: all; }
+    .overlay-buttons { pointer-events: none; }
+    .patch-rect {
+      stroke: #51e85a; stroke-width: 3px; fill: rgba(80,255,80,0.09); cursor: pointer;
+      transition: stroke 0.2s, stroke-width 0.15s;
+      pointer-events: all;
+    }
+    .patch-rect.selected { stroke: #e7bc1d; stroke-width: 5px; }
+    .patch-rect.temp { stroke: #82c9ff; fill: rgba(80,150,255,0.14); stroke-dasharray: 4; }
+    .edit-button {
+      position: absolute;
+      width: 28px; height: 28px; border-radius: 100px;
+      background: #31385d !important; color: #ffdd69; border: none;
+      font-size: 1.08em; cursor: pointer; z-index: 20; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 12px #0005;
+      opacity: 0.93;
+      pointer-events: all;
+      transition: background 0.18s, color 0.19s;
+    }
+    .edit-button:hover, .edit-button:focus { background: #455aac; color: #fffbe8; font-weight:bold;}
+    #editbox {
+      position: fixed; left: 50%; top: 40%; z-index:5001; transform: translate(-50%, 0);
+      background: #1d2128; color: #eee; border: 2px solid #5ba9fa; border-radius: 10px;
+      box-shadow: 0 4px 32px #000a; padding: 1.3em 1em 1.1em 1em; min-width: 230px; max-width: 86vw;
+      display: none;
+    }
+    #editbox input, #editbox textarea {
+      width: 100%; padding: 0.3em 0.5em; font-size:1.1em; margin-bottom:.8em; border-radius: 0.4em;
+      border:1px solid #99b; color: #211; background: #eff1fa;
+      box-sizing: border-box; outline:none; resize:vertical;
+    }
+    #editbox-title { margin-bottom: 1.1em; font-weight:bold; font-size:1.14em; color:#ffb756;}
+    #editbox .e-row { margin-bottom:.4em;}
+    #editbox .e-buttons { text-align:right; }
+    #editbox button { padding:0.4em 1.1em; border-radius:7px; border:none; background:#51e85a; color:#201; font-weight:bold; cursor:pointer; margin-left:.7em; }
+    #editbox button.cancel {background:#aaa; color:#333;}
+    #editbox button.delete {background:#e94e29; color:#fff;}
+    #editbox button:focus {outline:2px solid #7af;}
+    #controls {margin-bottom:16px;}
+    #downloadBtn {margin-left:1em;}
+    #patchCountInfo {margin-left:2em;}
+    #result {margin-top:1.1em; color: #fff; background: #181; padding: .5em;  font-size: 1em; max-width: 720px;}
+  </style>
+</head>
+<body>
+  <h2>Manual Quilt Patch Selector</h2>
+  <div id="controls">
+    <label>Select quilt image:
+      <input type="file" id="fileInput" accept="image/*">
+    </label>
+    <button id="resetBtn" title="Remove all patches and image">Reset</button>
+    <button id="downloadBtn" disabled>Download JSON</button>
+    <span id="patchCountInfo"></span>
+    <span id="quiltFileInfo"></span>
+  </div>
+  <div id="quilt-area">
+    <img id="quilt-bg" alt="Quilt" style="display:none;">
+    <svg id="patch-rects"></svg>
+    <div class="overlay-buttons"></div>
+  </div>
+  <div id="editbox">
+    <div id="editbox-title">Edit Quilt Patch Info</div>
+    <div class="e-row">
+      <label for="edit-title">Title</label>
+      <input type="text" id="edit-title" maxlength="100">
+    </div>
+    <div class="e-row">
+      <label for="edit-desc">Description</label>
+      <textarea id="edit-desc" rows="2" maxlength="400"></textarea>
+    </div>
+    <div class="e-buttons">
+      <button id="btnSave">Save</button>
+      <button class="delete" id="btnDelete">Delete Patch</button>
+      <button class="cancel" id="btnCancel">Cancel</button>
+    </div>
+  </div>
+  <pre id="result"></pre>
+  <script>
+    // LocalStorage keys:
+    const LS_STATE = 'quilt_manual_patches_v2b';
+    const LS_IMAGE = 'quilt_manual_image_v2b';
+    const LS_IMGNAME = 'quilt_manual_filename_v2b';
+
+    const fileInput = document.getElementById('fileInput');
+    const quiltImg = document.getElementById('quilt-bg');
+    const patchRects = document.getElementById('patch-rects');
+    const overlayBtns = document.querySelector('.overlay-buttons');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const result = document.getElementById('result');
+    const patchCountInfo = document.getElementById('patchCountInfo');
+    const quiltFileInfo = document.getElementById('quiltFileInfo');
+    const editbox = document.getElementById('editbox');
+    const btnSave = document.getElementById('btnSave');
+    const btnDelete = document.getElementById('btnDelete');
+    const btnCancel = document.getElementById('btnCancel');
+    const editTitle = document.getElementById('edit-title');
+    const editDesc = document.getElementById('edit-desc');
+
+    let patches = [];
+    let currentlyEditing = null;
+    let tempRect = null;
+    let dragging = false, dragStart = null, dragEnd = null;
+    let imgW = 0, imgH = 0;
+    let loadedFileName = null;
+
+    function saveLocal() {
+      localStorage.setItem(LS_STATE, JSON.stringify(patches));
+      localStorage.setItem(LS_IMAGE, quiltImg.src || '');
+      localStorage.setItem(LS_IMGNAME, loadedFileName || '');
+    }
+    function loadLocal() {
+      try { patches = JSON.parse(localStorage.getItem(LS_STATE) || '[]'); } catch(e){ patches = []; }
+      let imageData = localStorage.getItem(LS_IMAGE);
+      loadedFileName = localStorage.getItem(LS_IMGNAME) || '';
+      if (imageData && imageData.length > 30) {
+        quiltImg.src = imageData;
+        quiltImg.style.display = 'block';
+        quiltFileInfo.textContent = loadedFileName ? `[${loadedFileName}]` : '';
+      }
+    }
+    function resetLocal() {
+      localStorage.removeItem(LS_STATE);
+      localStorage.removeItem(LS_IMAGE);
+      localStorage.removeItem(LS_IMGNAME);
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      loadLocal();
+    });
+
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      loadedFileName = file.name;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        quiltImg.src = ev.target.result;
+        quiltImg.style.display = 'block';
+        quiltFileInfo.textContent = `[${file.name}]`;
+        patches = [];
+        drawOverlays();
+        updateJSONResult();
+        patchCountInfo.textContent = '';
+        downloadBtn.disabled = true;
+        saveLocal();
+      };
+      reader.readAsDataURL(file);
+    });
+
+    quiltImg.onload = function() {
+      imgW = quiltImg.naturalWidth;
+      imgH = quiltImg.naturalHeight;
+      patchRects.setAttribute('width', imgW);
+      patchRects.setAttribute('height', imgH);
+      // Position/Sizing for overlay
+      patchRects.style.width = quiltImg.width + 'px';
+      patchRects.style.height = quiltImg.height + 'px';
+      patchRects.style.position = 'absolute';
+      patchRects.style.left = quiltImg.offsetLeft + "px";
+      patchRects.style.top = quiltImg.offsetTop + "px";
+      overlayBtns.style.width = quiltImg.width + 'px';
+      overlayBtns.style.height = quiltImg.height + 'px';
+      overlayBtns.style.left = patchRects.style.left;
+      overlayBtns.style.top = patchRects.style.top;
+      drawOverlays();
+      patchCountInfo.textContent = `${patches.length} patches`;
+      downloadBtn.disabled = patches.length === 0;
+      updateJSONResult();
+    };
+    // Fire sizing if loaded in cache
+    if (quiltImg.complete && quiltImg.naturalWidth > 0) quiltImg.onload();
+
+    patchRects.addEventListener('mousedown', (ev) => {
+      if (!imgW || !imgH) return;
+      if(ev.button !== 0) return;
+      dragging = true;
+      const [x, y] = getSvgCoords(ev);
+      dragStart = {x, y};
+      dragEnd = {x, y};
+      drawTempRect();
+      patchRects.setPointerCapture(ev.pointerId || 1);
+    });
+    patchRects.addEventListener('mousemove', (ev) => {
+      if (!dragging || !imgW || !imgH) return;
+      const [x, y] = getSvgCoords(ev);
+      dragEnd = {x, y};
+      drawTempRect();
+    });
+    patchRects.addEventListener('mouseup', (ev) => {
+      if (!dragging || !imgW || !imgH) return;
+      dragging = false;
+      patchRects.releasePointerCapture(ev.pointerId || 1);
+      const [x, y] = getSvgCoords(ev);
+      dragEnd = {x, y};
+      let rect = {
+        left: Math.round(Math.min(dragStart.x, dragEnd.x)),
+        top: Math.round(Math.min(dragStart.y, dragEnd.y)),
+        width: Math.round(Math.abs(dragEnd.x - dragStart.x)),
+        height: Math.round(Math.abs(dragEnd.y - dragStart.y)),
+        label: `Patch ${patches.length+1}`,
+        desc: `Drawn by user`
+      };
+      if (rect.width > 10 && rect.height > 10) {
+        patches.push(rect);
+        drawOverlays();
+        updateJSONResult();
+        patchCountInfo.textContent = `${patches.length} patches`;
+        downloadBtn.disabled = false;
+        saveLocal();
+      }
+      removeTempRect();
+    });
+
+    function getSvgCoords(ev) {
+      let rect = patchRects.getBoundingClientRect();
+      let x = ((ev.clientX - rect.left) * imgW / rect.width);
+      let y = ((ev.clientY - rect.top) * imgH / rect.height);
+      return [
+        Math.max(0, Math.min(imgW-1, x)),
+        Math.max(0, Math.min(imgH-1, y))
+      ];
+    }
+    function drawTempRect() {
+      removeTempRect();
+      if (!dragStart || !dragEnd) return;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('class','patch-rect temp');
+      rect.setAttribute('x', Math.min(dragStart.x, dragEnd.x));
+      rect.setAttribute('y', Math.min(dragStart.y, dragEnd.y));
+      rect.setAttribute('width', Math.abs(dragEnd.x-dragStart.x));
+      rect.setAttribute('height', Math.abs(dragEnd.y-dragStart.y));
+      patchRects.appendChild(rect);
+      tempRect = rect;
+    }
+    function removeTempRect() {
+      if(tempRect && tempRect.parentNode) tempRect.parentNode.removeChild(tempRect);
+      tempRect = null;
+    }
+    function drawOverlays() {
+      patchRects.innerHTML = "";
+      overlayBtns.innerHTML = "";
+      patches.forEach((p, idx) => {
+        // SVG rectangle
+        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        rect.setAttribute('class','patch-rect');
+        rect.setAttribute('x', p.left); rect.setAttribute('y', p.top);
+        rect.setAttribute('width', p.width); rect.setAttribute('height', p.height);
+        rect.setAttribute('data-idx', idx);
+        rect.tabIndex = 0;
+        rect.title = (p.label||"") + "\n" + (p.desc||"");
+        patchRects.appendChild(rect);
+
+        // Edit button in overlay (HTML)
+        if (imgW > 0 && quiltImg.width > 0) {
+          const scaleX = quiltImg.width / imgW;
+          const scaleY = quiltImg.height / imgH;
+          const btn = document.createElement('button');
+          btn.className = "edit-button";
+          btn.innerHTML = "&#9998;"; // pencil icon
+          btn.style.left = (p.left*scaleX + p.width*scaleX - 29) + "px";
+          btn.style.top = (p.top*scaleY + 7) + "px";
+          btn.title = "Edit patch";
+          btn.onclick = function(ev) {
+            ev.stopPropagation();
+            setSelectedRect(idx);
+            editPatch(idx);
+          };
+          overlayBtns.appendChild(btn);
+        }
+      });
+      if(tempRect) patchRects.appendChild(tempRect);
+      setSelectedRect(null);
+    }
+    function setSelectedRect(idx) {
+      Array.from(patchRects.childNodes).forEach((el, i)=>{
+        el.classList.toggle('selected', i===idx);
+      });
+    }
+    function editPatch(idx) {
+      if(idx==null || !patches[idx]) return;
+      currentlyEditing = idx;
+      const patch = patches[idx];
+      editTitle.value = patch.label || "";
+      editDesc.value = patch.desc || "";
+      editbox.style.display = 'block';
+      setTimeout(()=>editTitle.focus(),45);
+    }
+    btnCancel.addEventListener('click', ()=>{
+      editbox.style.display = 'none';
+      setSelectedRect(null);
+      currentlyEditing = null;
+    });
+    btnSave.addEventListener('click', ()=>{
+      if(currentlyEditing!=null && patches[currentlyEditing]) {
+        patches[currentlyEditing].label = editTitle.value || `Patch ${currentlyEditing+1}`;
+        patches[currentlyEditing].desc = editDesc.value || "";
+        drawOverlays();
+        saveLocal();
+        updateJSONResult();
+      }
+      editbox.style.display = 'none';
+      setSelectedRect(null);
+      currentlyEditing = null;
+    });
+    btnDelete.addEventListener('click', ()=>{
+      if(currentlyEditing!=null && patches[currentlyEditing]) {
+        patches.splice(currentlyEditing, 1);
+        editbox.style.display = 'none';
+        setSelectedRect(null);
+        drawOverlays();
+        saveLocal();
+        updateJSONResult();
+        currentlyEditing = null;
+      }
+    });
+    downloadBtn.onclick = ()=> {
+      const json = JSON.stringify(
+        patches.map(({left,top,width,height,label,desc})=>({left,top,width,height,label,desc}))
+      );
+      const blob = new Blob([json], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'quilt-patches.json';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{document.body.removeChild(a); URL.revokeObjectURL(url);},100);
+    };
+    function updateJSONResult() {
+      result.textContent = JSON.stringify(
+        patches.map(({left,top,width,height,label,desc}) => ({left,top,width,height,label,desc})),
+        null, 2
+      );
+    }
+    resetBtn.onclick = function() {
+      if (confirm("Reset all patches and image?")) {
+        patches = [];
+        quiltImg.src = "";
+        quiltImg.style.display = "none";
+        quiltFileInfo.textContent = '';
+        patchRects.innerHTML = '';
+        overlayBtns.innerHTML = '';
+        result.textContent = '';
+        patchCountInfo.textContent = '';
+        downloadBtn.disabled = true;
+        currentlyEditing = null;
+        resetLocal();
+      }
+    };
+    window.addEventListener('keydown', e=>{
+      if(editbox.style.display==="block" && (e.key==="Escape"||e.key==="Esc")) {
+        btnCancel.click();
+      }
+    });
+    window.addEventListener('mousedown', e=>{
+      if(editbox.style.display === "block" && !editbox.contains(e.target)) {
+        btnCancel.click();
+      }
+    });
+  </script>
+</body>
+</html>
