@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Manual Quilt Patch Selector – Edit Buttons and Drag Working</title>
+  <title>Manual Quilt Patch Selector – Book Order JSON Sorting</title>
   <style>
     body { background: #232; color: #eee; font-family: sans-serif; padding: 2em;}
     #quilt-area { position:relative; display:inline-block; }
@@ -88,6 +88,27 @@
   </div>
   <pre id="result"></pre>
   <script>
+    // ---- Book order sorting: top->bottom, then left->right within row ----
+    function sortPatchesBookOrder(arr) {
+      const rowTolerance = 12;
+      // Step 1: sort by top
+      let sorted = arr.slice().sort((a, b) => a.top - b.top);
+      // Step 2: group into rows
+      let rows = [];
+      let lastRowY = null;
+      sorted.forEach(patch => {
+        if (lastRowY === null || Math.abs(patch.top - lastRowY) > rowTolerance) {
+          rows.push([]);
+          lastRowY = patch.top;
+        }
+        rows[rows.length-1].push(patch);
+      });
+      // Step 3: sort each row by left (x)
+      rows.forEach(row => row.sort((a, b) => a.left - b.left));
+      // Step 4: flatten back to list
+      return rows.flat();
+    }
+
     // LocalStorage keys:
     const LS_STATE = 'quilt_manual_patches_v2b';
     const LS_IMAGE = 'quilt_manual_image_v2b';
@@ -165,7 +186,6 @@
       imgH = quiltImg.naturalHeight;
       patchRects.setAttribute('width', imgW);
       patchRects.setAttribute('height', imgH);
-      // Position/Sizing for overlay
       patchRects.style.width = quiltImg.width + 'px';
       patchRects.style.height = quiltImg.height + 'px';
       patchRects.style.position = 'absolute';
@@ -180,7 +200,6 @@
       downloadBtn.disabled = patches.length === 0;
       updateJSONResult();
     };
-    // Fire sizing if loaded in cache
     if (quiltImg.complete && quiltImg.naturalWidth > 0) quiltImg.onload();
 
     patchRects.addEventListener('mousedown', (ev) => {
@@ -253,7 +272,6 @@
       patchRects.innerHTML = "";
       overlayBtns.innerHTML = "";
       patches.forEach((p, idx) => {
-        // SVG rectangle
         const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
         rect.setAttribute('class','patch-rect');
         rect.setAttribute('x', p.left); rect.setAttribute('y', p.top);
@@ -263,13 +281,12 @@
         rect.title = (p.label||"") + "\n" + (p.desc||"");
         patchRects.appendChild(rect);
 
-        // Edit button in overlay (HTML)
         if (imgW > 0 && quiltImg.width > 0) {
           const scaleX = quiltImg.width / imgW;
           const scaleY = quiltImg.height / imgH;
           const btn = document.createElement('button');
           btn.className = "edit-button";
-          btn.innerHTML = "&#9998;"; // pencil icon
+          btn.innerHTML = "&#9998;";
           btn.style.left = (p.left*scaleX + p.width*scaleX - 29) + "px";
           btn.style.top = (p.top*scaleY + 7) + "px";
           btn.title = "Edit patch";
@@ -327,9 +344,10 @@
       }
     });
     downloadBtn.onclick = ()=> {
-      const json = JSON.stringify(
+      const sorted = sortPatchesBookOrder(
         patches.map(({left,top,width,height,label,desc})=>({left,top,width,height,label,desc}))
       );
+      const json = JSON.stringify(sorted);
       const blob = new Blob([json], {type: 'application/json'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -339,10 +357,10 @@
       setTimeout(()=>{document.body.removeChild(a); URL.revokeObjectURL(url);},100);
     };
     function updateJSONResult() {
-      result.textContent = JSON.stringify(
-        patches.map(({left,top,width,height,label,desc}) => ({left,top,width,height,label,desc})),
-        null, 2
+      const sorted = sortPatchesBookOrder(
+        patches.map(({left,top,width,height,label,desc}) => ({left,top,width,height,label,desc}))
       );
+      result.textContent = JSON.stringify(sorted, null, 2);
     }
     resetBtn.onclick = function() {
       if (confirm("Reset all patches and image?")) {
