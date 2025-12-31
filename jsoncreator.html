@@ -2,15 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quilt Patch Detector & JSON Export (Left-to-Right Then Top-to-Down)</title>
+  <title>Quilt Patch Detector & JSON Export (Auto-Detect, Comic Book Reading Order)</title>
   <style>
     body { background: #232; color: #eee; font-family: sans-serif; padding: 2em;}
     #quilt-bg { max-width: 100%; height: auto; }
-    #patch-rects { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 10; }
+    #patch-rects { position: absolute; left: 0; top: 0; pointer-events: all; z-index: 10; }
     .patch-rect {
       stroke: #51e85a; stroke-width: 3px; fill: none; cursor:pointer; pointer-events: all;
-      transition:
-        stroke 0.26s cubic-bezier(.39,1.1,0,.88),
+      transition: stroke 0.26s cubic-bezier(.39,1.1,0,.88),
         stroke-width 0.15s cubic-bezier(.45,.8,.2,1.12),
         filter 0.24s cubic-bezier(.47,1.1,.3,.85);
       filter: none;
@@ -92,29 +91,22 @@
     </div>
   </div>
   <script>
-    // --- Sorting function: left to right, then top to down within column ---
-    function sortPatchesLeftToRightThenTop(patchesArr, colTolerance=12) {
-      // Copy array and sort by left coordinate (primary)
-      let sorted = [...patchesArr];
-      sorted.sort((a, b) => a.left - b.left);
-
-      // Assign a "col" group based on colTolerance
-      let lastLeft = null, colNum = 0;
-      sorted.forEach((p, idx) => {
-        if (lastLeft === null || Math.abs(p.left - lastLeft) > colTolerance) {
-          colNum += 1;
-          lastLeft = p.left;
-        }
-        p._colSortGroup = colNum;
+    // ===============================
+    // Comic reading order sort function
+    // ===============================
+    function sortPatchesComicOrder(arr) {
+      return arr.slice().sort((a, b) => {
+        const aTop = a.top, aBot = a.top + a.height, aLeft = a.left;
+        const bTop = b.top, bBot = b.top + b.height, bLeft = b.left;
+        // If a is completely above b
+        if (aBot <= bTop) return -1;
+        // If b is completely above a
+        if (bBot <= aTop) return 1;
+        // If they overlap vertically, compare by left (x)
+        if (aLeft !== bLeft) return aLeft - bLeft;
+        // Fallback: compare by top
+        return aTop - bTop;
       });
-      // Now sort by col group then by top
-      sorted.sort((a, b) =>
-        (a._colSortGroup - b._colSortGroup) ||
-        (a.top - b.top)
-      );
-      // Remove the temp col group
-      sorted.forEach(p => { delete p._colSortGroup; });
-      return sorted;
     }
 
     // --- DOM refs ---
@@ -395,8 +387,8 @@
         if(filtered.length>0) patches = filtered;
         else if(patches.length>30) patches = patches.sort((a,b)=>a.area-b.area).slice(0, 30);
       }
-      // --- SORT PATCHES left to right then top ---
-      patches = sortPatchesLeftToRightThenTop(patches);
+      // SORT PATCHES comic book reading order
+      patches = sortPatchesComicOrder(patches);
 
       computeOriginalVals();
       drawOverlays();
@@ -501,10 +493,9 @@
       }
     });
 
-    // --- Sort before display/export
+    // --- Sort (comicbook reading order) before display/export ---
     function updateJSONResult() {
-      // Always use sorted patches for display
-      const sortedPatches = sortPatchesLeftToRightThenTop(patches);
+      const sortedPatches = sortPatchesComicOrder(patches);
       result.textContent = JSON.stringify(
         sortedPatches.map(({left,top,width,height,label,desc}) => ({left,top,width,height,label,desc})),
         null, 2
@@ -512,7 +503,7 @@
     }
 
     downloadBtn.onclick = ()=> {
-      const sortedPatches = sortPatchesLeftToRightThenTop(patches);
+      const sortedPatches = sortPatchesComicOrder(patches);
       const json = JSON.stringify(
         sortedPatches.map(({left,top,width,height,label,desc})=>({left,top,width,height,label,desc}))
       );
