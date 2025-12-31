@@ -198,9 +198,17 @@
     }
 
     function openModal(idx) {
-      // --- Fix for stuck hover/active class on mobile ---
-      document.querySelectorAll('.patch-rect.active').forEach(el => el.classList.remove('active'));
-      // existing code below...
+      // Remove active class and blur all patch rects (for touch and keyboard)
+      document.querySelectorAll('.patch-rect').forEach(el => {
+        el.classList.remove('active');
+        el.blur(); // Remove focus
+      });
+      // Optionally focus an element inside the modal to steal focus (accessibility)
+      setTimeout(() => {
+        const closeBtn = modalContentWrap.querySelector('.modal-close');
+        if (closeBtn) closeBtn.focus();
+      }, 50);
+      // ...existing code follows...
       modalIdx = idx;
       renderModal(idx, null, true);
       modalOpen = true;
@@ -212,6 +220,7 @@
     }
 
     function closeModal() {
+      document.querySelectorAll('.patch-rect').forEach(el => el.blur());
       if(animating) return;
       // Animate lightbox modal fade out, then remove from view
       const card = modalContentWrap.querySelector('.modal-content-anim');
