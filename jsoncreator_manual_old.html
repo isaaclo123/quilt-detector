@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Manual Quilt Patch Selector – Comic Reading Order</title>
+  <title>Manual Quilt Patch Selector – Book Order JSON Sorting</title>
   <style>
     body { background: #232; color: #eee; font-family: sans-serif; padding: 2em;}
     #quilt-area { position:relative; display:inline-block; }
@@ -88,21 +88,25 @@
   </div>
   <pre id="result"></pre>
   <script>
-    // Comic-reading-order sort: vertical above/below relationships dominate read order,
-    // for overlaps sort left to right. This allows for natural comic/book layouts.
-    function sortPatchesComicOrder(arr) {
-      return arr.slice().sort((a, b) => {
-        const aTop = a.top, aBot = a.top + a.height, aLeft = a.left;
-        const bTop = b.top, bBot = b.top + b.height, bLeft = b.left;
-        // If a is completely above b
-        if (aBot <= bTop) return -1;
-        // If b is completely above a
-        if (bBot <= aTop) return 1;
-        // If they overlap vertically, read left-to-right
-        if (aLeft !== bLeft) return aLeft - bLeft;
-        // as fallback, by top
-        return aTop - bTop;
+    // ---- Book order sorting: top->bottom, then left->right within row ----
+    function sortPatchesBookOrder(arr) {
+      const rowTolerance = 12;
+      // Step 1: sort by top
+      let sorted = arr.slice().sort((a, b) => a.top - b.top);
+      // Step 2: group into rows
+      let rows = [];
+      let lastRowY = null;
+      sorted.forEach(patch => {
+        if (lastRowY === null || Math.abs(patch.top - lastRowY) > rowTolerance) {
+          rows.push([]);
+          lastRowY = patch.top;
+        }
+        rows[rows.length-1].push(patch);
       });
+      // Step 3: sort each row by left (x)
+      rows.forEach(row => row.sort((a, b) => a.left - b.left));
+      // Step 4: flatten back to list
+      return rows.flat();
     }
 
     // LocalStorage keys:
@@ -340,7 +344,7 @@
       }
     });
     downloadBtn.onclick = ()=> {
-      const sorted = sortPatchesComicOrder(
+      const sorted = sortPatchesBookOrder(
         patches.map(({left,top,width,height,label,desc})=>({left,top,width,height,label,desc}))
       );
       const json = JSON.stringify(sorted);
@@ -353,7 +357,7 @@
       setTimeout(()=>{document.body.removeChild(a); URL.revokeObjectURL(url);},100);
     };
     function updateJSONResult() {
-      const sorted = sortPatchesComicOrder(
+      const sorted = sortPatchesBookOrder(
         patches.map(({left,top,width,height,label,desc}) => ({left,top,width,height,label,desc}))
       );
       result.textContent = JSON.stringify(sorted, null, 2);
