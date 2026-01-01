@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quilt Patch Viewer (Close Button Top Right, Modal, Mobile)</title>
+  <title>Quilt Patch Viewer (Modal Image Always Fits)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <style>
     html, body {
@@ -82,9 +82,9 @@
     .modal-content-anim {
       position: absolute; left: 50%; top: 50%;
       background: #fff; box-shadow: 0 8px 40px #000a; border-radius: 12px;
-      padding: 1.0em 0.5em 0.7em 0.5em; max-width: 98vw;
-      min-width: 220px; min-height: 10px;
-      max-height: 96vh;
+      padding: 0.9em 0.3em 0.6em 0.3em; max-width: 99vw;
+      min-width: 70px; min-height: 10px;
+      max-height: 97vh;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       overflow-x: visible;
       will-change: transform, opacity;
@@ -106,15 +106,22 @@
     .modal-label { font-size: 1.18em; color: #e48d29; font-weight: bold; margin-bottom: 0.5em; margin-top: 0.5em; text-align: center;}
     .modal-desc { font-size: 1.12em; color: #322; text-align: center; margin-bottom: 0.4em; max-width: 85vw; line-height: 1.45;}
     .modal-slideshow {
-      position: relative; width: 90vw; max-width: 540px; min-width:160px;
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column;
+      width: 100%;
       margin-bottom: 0.8em;
-      display: flex; align-items: center; justify-content: center; flex-direction: column;
       background: none !important; box-shadow: none !important;
+      max-width: 98vw;
+      min-width:60px;
+      /* Let the image scale itself */
     }
     .modal-slide-img {
-      display: block; position: relative; margin: 0 auto;
-      width: auto; height: auto; max-width: 96vw; max-height: 52vh;
-      object-fit: contain; border: none !important; background: none !important; box-shadow: none !important;
+      display: block; margin: 0 auto;
+      width: auto; height: auto;
+      max-width: 98vw; max-height: 53vh;
+      object-fit: contain;
+      border: none !important; background: none !important; box-shadow: none !important;
       z-index: 10;
     }
     .spinner {
@@ -150,18 +157,16 @@
 
     @media (max-width: 700px) {
       html, body { font-size: 1em; }
-      .modal-content-anim { min-width: 80px; padding: 0.34em 0.05em 0.23em 0.05em; }
-      .modal-label { font-size: 1em; margin-bottom:.28em;}
+      .modal-content-anim { min-width: 54px; padding: 0.2em 0.04em 0.18em 0.04em; }
+      .modal-label { font-size: .99em; margin-bottom:.16em;}
       .modal-desc { font-size:0.97em; }
-      .modal-arrow { font-size: 1.17em; width:1.25em; height: 1.25em;}
-      .modal-slideshow {
-        max-width: 99vw; min-width:60px; margin-bottom:.23em;
-      }
-      .modal-slide-img { max-width: 98vw; max-height: 33vh; }
-      .spinner { min-width: 20vw; min-height:68px;}
-      .lds-ring { width: 36px; height: 36px;}
-      .lds-ring div { width: 26px; height: 26px; margin: 5px; border-width: 5px;}
-      .global-modal-close { font-size: 1.44em; top:.7em; right:.9em; }
+      .modal-arrow { font-size: 1.07em; width:1.15em; height: 1.15em;}
+      .modal-slideshow { max-width: 99vw; }
+      .modal-slide-img { max-width: 98vw; max-height: 29vh; }
+      .spinner { min-width: 13vw; min-height: 52px;}
+      .lds-ring { width: 28px; height: 28px;}
+      .lds-ring div { width: 18px; height: 18px; margin: 4px; border-width: 4px;}
+      .global-modal-close { font-size: 1.20em; top:.2em; right:.5em; }
     }
   </style>
 </head>
@@ -301,9 +306,17 @@
         imgEl.className = "modal-slide-img";
         imgEl.alt = p.label || '';
         imgEl.src = "thumbnails/" + p.filename;
+
+        function fitImgInModal() {
+          // This ensures the modal image always fits in modal viewport even in extreme aspect-ratio situations
+          // (via CSS already, but let's set again on img load for unlikely overflows)
+          imgEl.style.maxWidth = "98vw";
+          imgEl.style.maxHeight = "53vh";
+        }
         imgEl.onload = function() {
           spinner.style.display = 'none';
           imgEl.style.opacity = '1';
+          fitImgInModal();
         };
         imgEl.onerror = function() {
           spinner.style.display = 'none';
@@ -311,6 +324,7 @@
           imgEl.alt = "(thumbnail image not found)";
         };
         imgEl.style.opacity = '0';
+        fitImgInModal();
         slideDiv.appendChild(imgEl);
       } else {
         spinner.style.display = 'none';
