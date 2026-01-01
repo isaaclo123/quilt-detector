@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quilt Patch Viewer (Centered, Accurate Overlays, Modal Slides)</title>
+  <title>Quilt Patch Viewer (Centered, Modal, Thumbnails, Spinner)</title>
   <style>
     html, body {
       height: 100%; width: 100vw; margin: 0; padding: 0; background: #222; font-family: sans-serif; overflow: hidden;
@@ -13,17 +13,13 @@
     }
     #quilt-bg {
       display: block;
-      max-width: 98vw; max-height: 98vh;
-      width: auto; height: auto;
+      max-width: 98vw; max-height: 98vh; width: auto; height: auto;
       object-fit: contain; background: #222;
-      position: relative; user-select: none; pointer-events: none; z-index: 1;
-      left: 0; top: 0;
+      position: absolute; user-select: none; pointer-events: none; z-index: 1; left: 0; top: 0;
     }
     #patch-rects {
       position: absolute; left: 0; top: 0; pointer-events: none; z-index: 10;
-      width: 0; height: 0;
-      overflow: visible;
-      /* set by JS */
+      width: 0; height: 0; overflow: visible;
     }
     .patch-rect {
       fill: rgba(0,0,0,0);
@@ -116,11 +112,30 @@
       font-weight: bold; z-index: 2; transition: background 0.14s, color 0.14s;
     }
     .modal-close:hover, .modal-close:focus { background: #ffe6ba; color: #bb2323; outline: none;}
-    @media (max-width: 600px) {
-      .modal-arrow { font-size: 1.17em; width:1.13em; height: 1.13em;}
-      .modal-label {font-size:.99em;}
-      .modal-slide-img {max-width:96vw;margin:0;}
-      .modal-slideshow {max-width:96vw;}
+    .spinner {
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 30px; margin-bottom: 15px;
+      min-height: 80px; width: 100%;
+    }
+    .lds-ring { display: inline-block; position: relative; width: 64px; height: 64px; }
+    .lds-ring div {
+      box-sizing: border-box;
+      display: block;
+      position: absolute;
+      width: 48px;
+      height: 48px;
+      margin: 8px;
+      border: 6px solid #b93;
+      border-radius: 50%;
+      animation: lds-ring 1.2s cubic-bezier(0.65,0,0.45,1) infinite;
+      border-color: #b93 transparent transparent transparent;
+    }
+    .lds-ring div:nth-child(1) { animation-delay: -0.45s; }
+    .lds-ring div:nth-child(2) { animation-delay: -0.3s; }
+    .lds-ring div:nth-child(3) { animation-delay: -0.15s; }
+    @keyframes lds-ring {
+      0% { transform: rotate(0deg);}
+      100% {transform: rotate(360deg);}
     }
   </style>
 </head>
@@ -143,35 +158,24 @@
     const quiltWrap = document.getElementById('quiltWrap');
     let modalIdx = 0, animating = false, modalOpen = false, cleanupModalTimeout = null;
 
-    // Modal/modal nav elements
     const modal = document.getElementById('modal');
     const modalPrev = document.getElementById('modalPrev');
     const modalNext = document.getElementById('modalNext');
     const modalContentWrap = document.getElementById('modalContentWrap');
 
-    // Center quilt image and overlays accurately, handle scaling
     function drawPatchRects() {
       if (!quiltImg.complete || !quiltImg.naturalWidth || !quiltImg.naturalHeight) return;
-
-      // Get viewport size
       const viewportW = window.innerWidth, viewportH = window.innerHeight;
-      // Aspect ratios
       const imgNatW = quiltImg.naturalWidth, imgNatH = quiltImg.naturalHeight;
       const ratio = Math.min(0.98 * viewportW / imgNatW, 0.98 * viewportH / imgNatH);
       const displayW = imgNatW * ratio, displayH = imgNatH * ratio;
-
-      // Offset to center image
       const offsetX = (viewportW - displayW) / 2;
       const offsetY = (viewportH - displayH) / 2;
-
-      // Set quilt image display size and position
       quiltImg.style.width = displayW + "px";
       quiltImg.style.height = displayH + "px";
       quiltImg.style.left = offsetX + "px";
       quiltImg.style.top = offsetY + "px";
       quiltImg.style.position = "absolute";
-
-      // Place SVG overlay exactly on top of image
       patchRects.setAttribute('width', displayW);
       patchRects.setAttribute('height', displayH);
       patchRects.style.width = displayW + 'px';
@@ -180,11 +184,8 @@
       patchRects.style.top  = offsetY + 'px';
       patchRects.setAttribute('viewBox', `0 0 ${displayW} ${displayH}`);
       patchRects.innerHTML = "";
-
-      // Patch coordinates are in natural image pixel units, scale to visible display
       const scaleX = displayW / imgNatW;
       const scaleY = displayH / imgNatH;
-
       patches.forEach((p, idx) => {
         const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
         rect.setAttribute('class','patch-rect');
@@ -240,6 +241,13 @@
       },340);
     }
 
+    function createSpinner() {
+      const spinner = document.createElement('div');
+      spinner.className = 'spinner';
+      spinner.innerHTML = `<div class="lds-ring"><div></div><div></div><div></div><div></div></div>`;
+      return spinner;
+    }
+
     function renderModal(idx, direction=null, isEnter=true) {
       if (animating) return;
       idx = (idx + patches.length) % patches.length;
@@ -254,6 +262,10 @@
         <div class="modal-desc">${p.desc ? p.desc : ''}</div>
       `;
       const slideDiv = card.querySelector('.modal-slideshow');
+      // Show spinner
+      const spinner = createSpinner();
+      slideDiv.appendChild(spinner);
+      // Patch image (using filename as before)
       if (p.filename) {
         const imgEl = document.createElement('img');
         imgEl.className = "modal-slide-img";
@@ -263,13 +275,16 @@
         imgEl.style.maxHeight = "340px";
         imgEl.style.maxWidth = "480px";
         imgEl.style.objectFit = "contain";
+        imgEl.onload = function() { spinner.style.display = 'none'; };
         imgEl.onerror = function() {
+          spinner.style.display = 'none';
           imgEl.style.background = "#e86e6e";
           imgEl.alt = "(thumbnail image not found)";
         };
         slideDiv.appendChild(imgEl);
       } else {
-        slideDiv.innerHTML = '<div style="color:#902; background:#fee; padding:.5em; border-radius:5px;">No patch thumbnail (filename) set in JSON for this patch.</div>';
+        spinner.style.display = 'none';
+        slideDiv.innerHTML += '<div style="color:#902; background:#fee; padding:.5em; border-radius:5px;">No patch thumbnail (filename) set in JSON for this patch.</div>';
       }
       card.style.opacity = "1";
       let startTransform = "translate(-50%,-50%)";
