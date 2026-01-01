@@ -2,61 +2,50 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quilt Patch Display (Low-Res Background, Scaled Rectangles, Modal Slides, Glow)</title>
+  <title>Quilt Patch Viewer (Modal, Slides, Thumbnails, Accurate Scaling)</title>
   <style>
     html, body {
-      height: 100%; margin: 0; padding: 0; background: #222; font-family: sans-serif;
-      width: 100vw; height: 100vh; overflow: hidden;
+      height: 100%; width: 100vw; margin: 0; padding: 0; background: #222; font-family: sans-serif; overflow: hidden;
     }
     .quilt-wrap {
-      position: relative; width: 100vw; height: 100vh; overflow: hidden;
-      background: #222; display: flex; align-items: center; justify-content: center;
+      position: relative; width: 100vw; height: 100vh; background: #222; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
     }
     #quilt-bg {
-      display: block; width: 100vw; height: 100vh;
-      object-fit: contain; user-select: none; pointer-events: none; background: #222;
-      position: absolute; left: 0; top: 0;
+      display: block;
+      max-width: 98vw; max-height: 98vh;
+      width: auto; height: auto;
+      object-fit: contain;
+      position: absolute; left: 0; top: 0; user-select: none; pointer-events: none; z-index: 1;
     }
     #patch-rects {
-      position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10;
+      position: absolute; left: 0; top: 0; pointer-events: none; z-index: 10;
+      width: 0; height: 0;
+      overflow: visible;
     }
     .patch-rect {
       fill: rgba(0,0,0,0);
-      pointer-events: all; cursor: pointer;
-      transition:
-        stroke-width 0.19s cubic-bezier(.4,0,.2,1),
-        stroke 0.22s cubic-bezier(0.4,0,.2,1),
-        fill 0.16s cubic-bezier(.4,0,.2,1),
-        filter 0.28s cubic-bezier(.47,1.3,.25,.92);
+      pointer-events: all;
+      cursor: pointer;
+      transition: stroke-width 0.19s, stroke 0.22s, fill 0.16s, filter 0.28s;
       filter: drop-shadow(0px 0px 0px rgba(227,122,0,0));
-      will-change: filter, stroke-width, stroke, fill;
     }
     .patch-rect.active,
     .patch-rect:focus,
     .patch-rect:hover {
-      stroke: #e04813;
-      stroke-width: 5px;
-      fill: rgba(255,255,80,0.18);
-      filter: drop-shadow(0px 2.5px 14px rgba(227,122,0,0.36));
+      stroke: #e04813; stroke-width: 5px; fill: rgba(255,255,80,0.18);
+      filter: drop-shadow(0 2.5px 14px rgba(227,122,0,0.36));
       z-index: 20;
-      transition:
-        stroke-width 0.21s cubic-bezier(.4,0,.2,1),
-        stroke 0.14s cubic-bezier(0.4,0,.2,1),
-        fill 0.15s cubic-bezier(.4,0,.2,1),
-        filter 0.38s cubic-bezier(.47,1.2,.3,.94);
     }
     .modal-backdrop {
       display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.62);
-      z-index: 9999; align-items: center; justify-content: center;
-      opacity: 0;
+      z-index: 9999; align-items: center; justify-content: center; opacity: 0;
       pointer-events: none;
       transition: opacity 0.33s cubic-bezier(.48,1,.1,.94);
     }
     .modal-backdrop.active {
-      display: flex;
-      opacity: 1;
-      pointer-events: auto;
+      display: flex; opacity: 1; pointer-events: auto;
       transition: opacity 0.44s cubic-bezier(.45,0,.1,1.1);
     }
     .modal-arrows-static {
@@ -66,7 +55,6 @@
       top: 50%;
       left: 0; width: 100vw; height: 0;
       display: flex; align-items: center; justify-content: space-between;
-      pointer-events: none;
     }
     .modal-arrow {
       background: #fff6; border: none; font-size: 2.1em; color: #c48a4a;
@@ -117,9 +105,7 @@
     .modal-slide-img {
       background: #fff; border-radius: 12px; box-shadow: 0 2px 18px #0003;
       display: block; position: relative; top: 0; left: 0; margin: 0 auto;
-      width: 100%; max-width: 480px; max-height: 340px;
-      height: auto;
-      object-fit: contain;
+      width: 100%; max-width: 480px; max-height: 340px; height: auto; object-fit: contain;
     }
     .modal-close {
       position: absolute; top: 0.5em; right: 1em;
@@ -137,8 +123,8 @@
   </style>
 </head>
 <body>
-  <div class="quilt-wrap">
-    <img src="quilt.jpg" id="quilt-bg" alt="Quilt Background">
+  <div class="quilt-wrap" id="quiltWrap">
+    <img src="quilt-lowres.jpg" id="quilt-bg" alt="Quilt Background">
     <svg id="patch-rects"></svg>
   </div>
   <div class="modal-backdrop" id="modal">
@@ -149,59 +135,55 @@
     <div class="modal-content-wrap" id="modalContentWrap"></div>
   </div>
   <script>
+    let patches = [];
     const quiltImg = document.getElementById('quilt-bg');
     const patchRects = document.getElementById('patch-rects');
+    const quiltWrap = document.getElementById('quiltWrap');
+    let modalIdx = 0, animating = false, modalOpen = false, cleanupModalTimeout = null;
+
+    // Modal/modal nav elements
     const modal = document.getElementById('modal');
     const modalPrev = document.getElementById('modalPrev');
     const modalNext = document.getElementById('modalNext');
     const modalContentWrap = document.getElementById('modalContentWrap');
-    let patches = [];
-    let modalIdx = 0;
-    let animating = false;
-    let modalOpen = false;
-    let cleanupModalTimeout = null;
-    // === REPLACE THESE TWO TO MATCH YOUR HIGH-RES QUILT IMAGE! ===
-    let sourceWidth = 3629; // original width in pixels from JSON
-    let sourceHeight = 4839; // original height in pixels from JSON
-
-    function getDisplayedImageRect(img) {
-      const container = img.parentElement;
-      const cW = container.clientWidth, cH = container.clientHeight;
-      const iW = img.naturalWidth, iH = img.naturalHeight;
-      if (!(cW && cH && iW && iH)) return {left:0, top:0, width:0, height:0};
-      let ratio = Math.min(cW/iW, cH/iH);
-      let dW = iW * ratio, dH = iH * ratio;
-      let left = (cW - dW) / 2, top = (cH - dH) / 2;
-      return {left: Math.round(left), top: Math.round(top), width: Math.round(dW), height: Math.round(dH)};
-    }
 
     function drawPatchRects() {
-      // Use actual native size of displayed (low-res) raster for overlays!
-      const displayW = quiltImg.naturalWidth, displayH = quiltImg.naturalHeight;
+      if (!quiltImg.complete || !quiltImg.naturalWidth || !quiltImg.naturalHeight) return;
+      const imgRect = quiltImg.getBoundingClientRect();
+      const wrapRect = quiltWrap.getBoundingClientRect();
+
+      const displayW = imgRect.width;
+      const displayH = imgRect.height;
+      const offsetX = imgRect.left - wrapRect.left;
+      const offsetY = imgRect.top - wrapRect.top;
+
       patchRects.setAttribute('width', displayW);
       patchRects.setAttribute('height', displayH);
       patchRects.style.width = displayW + 'px';
       patchRects.style.height = displayH + 'px';
-      patchRects.style.left = "0px";
-      patchRects.style.top = "0px";
+      patchRects.style.left = offsetX + 'px';
+      patchRects.style.top  = offsetY + 'px';
+
+      patchRects.setAttribute('viewBox', `0 0 ${displayW} ${displayH}`);
       patchRects.innerHTML = "";
 
-      // Mapping from HIGH RES COORDS (sourceWidth, sourceHeight) --> current image
-      const scaleX = displayW / sourceWidth;
-      const scaleY = displayH / sourceHeight;
+      const natW = quiltImg.naturalWidth, natH = quiltImg.naturalHeight;
+      const scaleX = displayW / natW;
+      const scaleY = displayH / natH;
+
       patches.forEach((p, idx) => {
         const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
         rect.setAttribute('class','patch-rect');
-        rect.setAttribute('x', p.left * scaleX);
-        rect.setAttribute('y', p.top * scaleY);
-        rect.setAttribute('width', p.width * scaleX);
-        rect.setAttribute('height', p.height * scaleY);
+        rect.setAttribute('x', p.left   * scaleX);
+        rect.setAttribute('y', p.top    * scaleY);
+        rect.setAttribute('width', p.width  * scaleX);
+        rect.setAttribute('height',p.height * scaleY);
         rect.setAttribute('tabindex',0);
         rect.setAttribute('data-idx',idx);
-        rect.addEventListener('mouseover', ()=>{ if (!modalOpen) rect.classList.add('active'); });
-        rect.addEventListener('mouseout', ()=> rect.classList.remove('active'));
-        rect.addEventListener('focus', ()=>{ if (!modalOpen) rect.classList.add('active'); });
-        rect.addEventListener('blur', ()=> rect.classList.remove('active'));
+        rect.addEventListener('mouseover', ()=>{ rect.classList.add('active'); });
+        rect.addEventListener('mouseout',  ()=>{ rect.classList.remove('active'); });
+        rect.addEventListener('focus',     ()=>{ rect.classList.add('active'); });
+        rect.addEventListener('blur',      ()=>{ rect.classList.remove('active'); });
         rect.addEventListener('click', (e)=>{
           openModal(idx);
           e.stopPropagation();
@@ -211,13 +193,9 @@
     }
 
     function openModal(idx) {
-      if (cleanupModalTimeout) {
-        clearTimeout(cleanupModalTimeout);
-        cleanupModalTimeout = null;
-      }
+      if (cleanupModalTimeout) { clearTimeout(cleanupModalTimeout); cleanupModalTimeout = null; }
       document.querySelectorAll('.patch-rect').forEach(el => {
-        el.classList.remove('active');
-        el.blur();
+        el.classList.remove('active'); el.blur();
       });
       modalIdx = (idx + patches.length) % patches.length;
       renderModal(modalIdx, null, true);
@@ -289,14 +267,8 @@
       card.style.zIndex = "3";
       modalContentWrap.appendChild(card);
 
-      card.querySelector('#modalClose').onclick = (e) => {
-        e.stopPropagation();
-        closeModal();
-      };
-
-      setTimeout(() => {
-        card.querySelector('.modal-close').focus();
-      }, 350);
+      card.querySelector('#modalClose').onclick = (e) => { e.stopPropagation(); closeModal(); };
+      setTimeout(() => { card.querySelector('.modal-close').focus(); }, 350);
 
       if(isEnter || !prevCard) {
         card.classList.add('modal-fadein');
@@ -340,8 +312,7 @@
     });
 
     function stopEvent(e) {
-      e.stopPropagation();
-      e.preventDefault();
+      e.stopPropagation(); e.preventDefault();
     }
     ['touchstart','mousedown'].forEach(evt => {
       modal.addEventListener(evt, function(e){
@@ -361,26 +332,13 @@
       if(patches.length) drawPatchRects();
     };
 
-    async function loadPatchesAndInit() {
-      let resp = await fetch('quilt-patches.json');
-      let json = await resp.json();
-      // JSON may be {source_width, source_height, patches:[]} or flat array (old)
-      if (Array.isArray(json)) {
-        patches = json;
-        // hardcoded: replace with your quilt's high-res W/H if needed
-        sourceWidth = 3000;
-        sourceHeight = 2000;
-      } else {
-        patches = json.patches;
-        sourceWidth = json.source_width;
-        sourceHeight = json.source_height;
-      }
-      if (!quiltImg.complete) {
-        await new Promise(res=>quiltImg.onload=res);
-      }
-      drawPatchRects();
-    }
-    loadPatchesAndInit();
+    // Fetch patches from file
+    fetch('quilt-patches.json')
+      .then(r=>r.json())
+      .then(json=>{
+        patches = Array.isArray(json) ? json : json.patches;
+        if (quiltImg.complete) drawPatchRects();
+      });
   </script>
 </body>
 </html>

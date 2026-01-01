@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Manual Quilt Patch Selector – Export ZIP, Load JSON, Comic Order</title>
+  <title>Manual Quilt Patch Selector, High-Quality Patch JPGs in thumbnails/, Low-Res Quilt, Patch JSON in Low-Res Coords</title>
   <style>
     body { background: #232; color: #eee; font-family: sans-serif; padding: 2em;}
     #quilt-area {
@@ -16,10 +16,8 @@
     }
     #quilt-bg {
       display: block;
-      max-width: none !important;
-      max-height: none !important;
-      width: auto !important;
-      height: auto !important;
+      max-width: none !important; max-height: none !important;
+      width: auto !important; height: auto !important;
     }
     #patch-rects, .overlay-buttons {
       position: absolute; top: 0; left: 0; z-index: 15;
@@ -107,6 +105,9 @@
   </div>
   <pre id="result"></pre>
   <script>
+    // Set your desired low-res quilt width for export (pixels on long side)
+    const LOWRES_MAX_DIM = 1400; // Change for your project!
+
     function sortPatchesComicOrder(arr) {
       return arr.slice().sort((a, b) => {
         const aTop = a.top, aBot = a.top + a.height, aLeft = a.left;
@@ -146,6 +147,8 @@
     let dragging = false, dragStart = null, dragEnd = null;
     let imgW = 0, imgH = 0;
     let loadedFileName = null;
+    let imgDataURL = ""; // for original
+    let quiltNaturalW = 0, quiltNaturalH = 0; // original full-size
 
     function saveLocal() {
       localStorage.setItem(LS_STATE, JSON.stringify(patches));
@@ -158,6 +161,7 @@
       loadedFileName = localStorage.getItem(LS_IMGNAME) || '';
       if (imageData && imageData.length > 30) {
         quiltImg.src = imageData;
+        imgDataURL = imageData;
         quiltImg.style.display = 'block';
         quiltFileInfo.textContent = loadedFileName ? `[${loadedFileName}]` : '';
       }
@@ -168,9 +172,7 @@
       localStorage.removeItem(LS_IMGNAME);
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-      loadLocal();
-    });
+    document.addEventListener('DOMContentLoaded', function() { loadLocal(); });
 
     fileInput.addEventListener('change', e => {
       const file = e.target.files[0];
@@ -179,6 +181,7 @@
       const reader = new FileReader();
       reader.onload = function(ev) {
         quiltImg.src = ev.target.result;
+        imgDataURL = ev.target.result;
         quiltImg.style.display = 'block';
         quiltFileInfo.textContent = `[${file.name}]`;
         patches = [];
@@ -192,7 +195,6 @@
       reader.readAsDataURL(file);
     });
 
-    // ---- LOAD JSON ----
     jsonInput.addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -223,6 +225,8 @@
     quiltImg.onload = function() {
       imgW = quiltImg.naturalWidth;
       imgH = quiltImg.naturalHeight;
+      quiltNaturalW = imgW;
+      quiltNaturalH = imgH;
       patchRects.setAttribute('width', imgW);
       patchRects.setAttribute('height', imgH);
       patchRects.style.width = imgW + 'px';
@@ -385,11 +389,8 @@
     });
 
     downloadBtn.onclick = ()=> {
-      const sorted = sortPatchesComicOrder(
-        patches.map((p,i)=>
-          Object.assign({filename: `patch-${i+1}.png`}, p))
-      );
-      const json = JSON.stringify(sorted, null, 2);
+      const {patchArr, lowresW, lowresH} = getPatchArrWithLowResCoords();
+      const json = JSON.stringify(patchArr, null, 2);
       const blob = new Blob([json], {type: 'application/json'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -399,28 +400,33 @@
       setTimeout(()=>{document.body.removeChild(a); URL.revokeObjectURL(url);},100);
     };
 
-    // ZIP EXPORT
+    // --- ZIP Export ---
     zipBtn.onclick = async function() {
       if (!patches.length || !imgW || !imgH || !quiltImg.src) return;
-      const sorted = sortPatchesComicOrder(
-        patches.map((p,i)=>Object.assign({filename:`patch-${i+1}.png`},p))
-      );
+      const {patchArr, lowresW, lowresH, factor} = getPatchArrWithLowResCoords();
+
       const zip = new JSZip();
+      // 1. Add low-res preview: quilt-lowres.jpg
+      const lowresDataURL = await makeLowResQuilt(lowresW, lowresH, factor); // "image/jpeg"
+      zip.file("quilt-lowres.jpg", dataURLtoBlob(lowresDataURL));
+
+      // 2. Patch thumbnails (high-quality JPG) in "thumbnails/"
+      // For each patch (from original fullsize image)
       const img = await loadImageFromUrl(quiltImg.src);
-      for(let i=0;i<sorted.length;++i){
-        const p = sorted[i];
+      for(let i=0;i<patches.length;++i){
+        const p = patches[i];
+        const patchName = `patch-${i+1}.jpg`;
         const c = document.createElement('canvas');
         c.width = p.width; c.height = p.height;
         const ctx = c.getContext('2d');
-        ctx.drawImage(
-          img,
-          p.left, p.top, p.width, p.height,
-          0, 0, p.width, p.height
-        );
-        const dataURL = c.toDataURL('image/png');
-        zip.file(`patch-${i+1}.png`, dataURLtoBlob(dataURL));
+        ctx.drawImage(img, p.left, p.top, p.width, p.height, 0, 0, p.width, p.height);
+        const jpgURL = c.toDataURL('image/jpeg', 0.96);
+        zip.folder("thumbnails").file(patchName, dataURLtoBlob(jpgURL));
+        // Assign filename in output JSON (we do it in getPatchArrWithLowResCoords())
       }
-      zip.file('quilt-patches.json', JSON.stringify(sorted, null, 2));
+      // 3. JSON, using low-res coordinates
+      zip.file('quilt-patches.json', JSON.stringify(patchArr, null, 2));
+      // 4. Download
       const blob = await zip.generateAsync({type:'blob'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -430,6 +436,44 @@
       a.click();
       setTimeout(()=>{document.body.removeChild(a); URL.revokeObjectURL(url);},100);
     };
+
+    function getPatchArrWithLowResCoords() {
+      // Compute scale for lowres quilt
+      let factor = 1.0, lowresW = imgW, lowresH = imgH;
+      if (imgW > imgH) {
+        factor = (imgW > LOWRES_MAX_DIM) ? LOWRES_MAX_DIM / imgW : 1.0;
+      } else {
+        factor = (imgH > LOWRES_MAX_DIM) ? LOWRES_MAX_DIM / imgH : 1.0;
+      }
+      lowresW = Math.round(imgW * factor);
+      lowresH = Math.round(imgH * factor);
+      // New patch coords and JSON
+      const patchArr = sortPatchesComicOrder(
+        patches.map((p,i)=>({
+          left: Math.round(p.left * factor),
+          top: Math.round(p.top * factor),
+          width: Math.round(p.width * factor),
+          height: Math.round(p.height * factor),
+          label: p.label,
+          desc: p.desc,
+          filename: `patch-${i+1}.jpg`
+        }))
+      );
+      return {patchArr, lowresW, lowresH, factor};
+    }
+
+    function makeLowResQuilt(w, h, factor) {
+      // Returns promise for JPEG DataURL of quilt image resized with high quality
+      return new Promise(resolve => {
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(quiltImg, 0, 0, imgW, imgH, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.92));
+      });
+    }
     function dataURLtoBlob(dataurl) {
       const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
         bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
@@ -446,10 +490,8 @@
     }
 
     function updateJSONResult() {
-      const sorted = sortPatchesComicOrder(
-        patches.map((p,i)=>Object.assign({filename: `patch-${i+1}.png`}, p))
-      );
-      result.textContent = JSON.stringify(sorted, null, 2);
+      const {patchArr} = getPatchArrWithLowResCoords();
+      result.textContent = JSON.stringify(patchArr, null, 2);
     }
 
     resetBtn.onclick = function() {
