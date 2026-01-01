@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quilt Patch Viewer (Centered, Modal, Thumbnails, Spinner)</title>
+  <title>Quilt Patch Viewer (Centered, Modal, Thumbnails, Centered Spinner, No img anim)</title>
   <style>
     html, body {
       height: 100%; width: 100vw; margin: 0; padding: 0; background: #222; font-family: sans-serif; overflow: hidden;
@@ -69,7 +69,7 @@
       position: absolute; left: 50%; top: 50%;
       background: #fff; box-shadow: 0 8px 40px #000a; border-radius: 12px;
       padding: 1.0em 0.5em 0.7em 0.5em; max-width: 98vw; max-height: 96vh;
-      display: flex; flex-direction: column; align-items: center;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
       min-width: 320px;
       overflow-x: visible;
       will-change: transform, opacity;
@@ -99,6 +99,7 @@
     .modal-slideshow {
       position: relative; width: 90vw; max-width: 540px; min-width:260px; height: 45vh; margin-bottom: 0.8em;
       overflow: hidden; display: flex; align-items: center; justify-content: center;
+      flex-direction: column;
     }
     .modal-slide-img {
       background: #fff; border-radius: 12px; box-shadow: 0 2px 18px #0003;
@@ -113,9 +114,15 @@
     }
     .modal-close:hover, .modal-close:focus { background: #ffe6ba; color: #bb2323; outline: none;}
     .spinner {
-      display: flex; align-items: center; justify-content: center;
-      margin-top: 30px; margin-bottom: 15px;
-      min-height: 80px; width: 100%;
+      display: flex;
+      width: 100%;
+      flex: 1 1 auto;
+      align-items: center;
+      justify-content: center;
+      min-height: 132px;
+      min-width: 132px;
+      position: absolute;
+      left: 0; right: 0; top: 0; bottom: 0;
     }
     .lds-ring { display: inline-block; position: relative; width: 64px; height: 64px; }
     .lds-ring div {
@@ -248,7 +255,7 @@
       return spinner;
     }
 
-    function renderModal(idx, direction=null, isEnter=true) {
+    function renderModal(idx, direction = null, isEnter = true) {
       if (animating) return;
       idx = (idx + patches.length) % patches.length;
       const p = patches[idx];
@@ -262,9 +269,11 @@
         <div class="modal-desc">${p.desc ? p.desc : ''}</div>
       `;
       const slideDiv = card.querySelector('.modal-slideshow');
-      // Show spinner
+
+      // Show spinner centered (absolute, covers modal-slideshow)
       const spinner = createSpinner();
       slideDiv.appendChild(spinner);
+
       // Patch image (using filename as before)
       if (p.filename) {
         const imgEl = document.createElement('img');
@@ -275,12 +284,17 @@
         imgEl.style.maxHeight = "340px";
         imgEl.style.maxWidth = "480px";
         imgEl.style.objectFit = "contain";
-        imgEl.onload = function() { spinner.style.display = 'none'; };
+        imgEl.onload = function() {
+          spinner.style.display = 'none';
+          imgEl.style.opacity = '1';
+        };
         imgEl.onerror = function() {
           spinner.style.display = 'none';
           imgEl.style.background = "#e86e6e";
           imgEl.alt = "(thumbnail image not found)";
         };
+        // No fade/animation, just appear
+        imgEl.style.opacity = '0';
         slideDiv.appendChild(imgEl);
       } else {
         spinner.style.display = 'none';
@@ -289,35 +303,35 @@
       card.style.opacity = "1";
       let startTransform = "translate(-50%,-50%)";
       let endTransform = "translate(-50%,-50%)";
-      if(direction === 'left')      startTransform = "translate(80vw,-50%)";
-      else if(direction === 'right')startTransform = "translate(-180vw,-50%)";
+      if (direction === 'left')      startTransform = "translate(80vw,-50%)";
+      else if (direction === 'right')startTransform = "translate(-180vw,-50%)";
       card.style.transform = startTransform;
-      if(prevCard) prevCard.style.zIndex = "2";
+      if (prevCard) prevCard.style.zIndex = "2";
       card.style.zIndex = "3";
       modalContentWrap.appendChild(card);
 
       card.querySelector('#modalClose').onclick = (e) => { e.stopPropagation(); closeModal(); };
       setTimeout(() => { card.querySelector('.modal-close').focus(); }, 350);
 
-      if(isEnter || !prevCard) {
+      if (isEnter || !prevCard) {
         card.classList.add('modal-fadein');
-        if(prevCard && prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
-      } else if(direction && prevCard) {
+        if (prevCard && prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
+      } else if (direction && prevCard) {
         animating = true;
         prevCard.style.transition = "transform 0.47s cubic-bezier(.85,.26,.16,1.34), opacity 0.37s cubic-bezier(.5,.4,.18,1.0)";
-        if(direction === "left") prevCard.style.transform = "translate(-180vw,-50%)";
-        else if(direction === "right") prevCard.style.transform = "translate(80vw,-50%)";
+        if (direction === "left") prevCard.style.transform = "translate(-180vw,-50%)";
+        else if (direction === "right") prevCard.style.transform = "translate(80vw,-50%)";
         prevCard.style.opacity = "0.6";
-        setTimeout(()=>{
+        setTimeout(() => {
           card.style.transition = "transform 0.47s cubic-bezier(.85,.26,.16,1.34), opacity 0.37s cubic-bezier(.5,.4,.18,1.0)";
           card.style.transform = endTransform;
-        },10);
-        setTimeout(()=>{
-          if(prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
+        }, 10);
+        setTimeout(() => {
+          if (prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
           animating = false;
-        },480);
+        }, 480);
       } else {
-        if(prevCard && prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
+        if (prevCard && prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
         card.style.transition = "none";
         card.style.transform = endTransform;
       }
