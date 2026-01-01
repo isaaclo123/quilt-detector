@@ -116,8 +116,8 @@
     .modal-slide-img {
       background: #fff; border-radius: 12px; box-shadow: 0 2px 18px #0003;
       display: block; position: relative; top: 0; left: 0; margin: 0 auto;
-      max-width: 480px; max-height: 340px;
-      width: auto; height: auto;
+      width: 100%; max-width: 480px; max-height: 340px;
+      height: auto;
       object-fit: contain;
     }
     .modal-close {
@@ -130,6 +130,8 @@
     @media (max-width: 600px) {
       .modal-arrow { font-size: 1.17em; width:1.13em; height: 1.13em;}
       .modal-label {font-size:.99em;}
+      .modal-slide-img {max-width:96vw;margin:0;}
+      .modal-slideshow {max-width:96vw;}
     }
   </style>
 </head>
@@ -158,7 +160,6 @@
     let modalOpen = false;
     let cleanupModalTimeout = null;
 
-    // Same logic as before but renderPatchToCanvas replaced with renderPatchImage
     function getDisplayedImageRect(img) {
       const container = img.parentElement;
       const cW = container.clientWidth, cH = container.clientHeight;
@@ -251,12 +252,17 @@
         <div class="modal-desc">${p.desc ? p.desc : ''}</div>
       `;
       const slideDiv = card.querySelector('.modal-slideshow');
-      // Replace canvas with image using filename field
+      // Create an <img> for the patch thumbnail,
+      // scale it to fill the width and fit max width/height for modal area
       if (p.filename) {
         const imgEl = document.createElement('img');
         imgEl.className = "modal-slide-img";
         imgEl.alt = p.label || '';
         imgEl.src = "thumbnails/" + p.filename;
+        imgEl.style.width = "100%";
+        imgEl.style.maxHeight = "340px";
+        imgEl.style.maxWidth = "480px";
+        imgEl.style.objectFit = "contain";
         imgEl.onerror = function() {
           imgEl.style.background = "#e86e6e";
           imgEl.alt = "(thumbnail image not found)";
