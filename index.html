@@ -2,26 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quilt Patch Viewer (Modal, Slides, Thumbnails, Accurate Scaling)</title>
+  <title>Quilt Patch Viewer (Centered, Accurate Overlays, Modal Slides)</title>
   <style>
     html, body {
       height: 100%; width: 100vw; margin: 0; padding: 0; background: #222; font-family: sans-serif; overflow: hidden;
     }
     .quilt-wrap {
-      position: relative; width: 100vw; height: 100vh; background: #222; overflow: hidden;
+      position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; background: #222; overflow: hidden;
       display: flex; align-items: center; justify-content: center;
     }
     #quilt-bg {
       display: block;
       max-width: 98vw; max-height: 98vh;
       width: auto; height: auto;
-      object-fit: contain;
-      position: absolute; left: 0; top: 0; user-select: none; pointer-events: none; z-index: 1;
+      object-fit: contain; background: #222;
+      position: relative; user-select: none; pointer-events: none; z-index: 1;
+      left: 0; top: 0;
     }
     #patch-rects {
       position: absolute; left: 0; top: 0; pointer-events: none; z-index: 10;
       width: 0; height: 0;
       overflow: visible;
+      /* set by JS */
     }
     .patch-rect {
       fill: rgba(0,0,0,0);
@@ -147,29 +149,41 @@
     const modalNext = document.getElementById('modalNext');
     const modalContentWrap = document.getElementById('modalContentWrap');
 
+    // Center quilt image and overlays accurately, handle scaling
     function drawPatchRects() {
       if (!quiltImg.complete || !quiltImg.naturalWidth || !quiltImg.naturalHeight) return;
-      const imgRect = quiltImg.getBoundingClientRect();
-      const wrapRect = quiltWrap.getBoundingClientRect();
 
-      const displayW = imgRect.width;
-      const displayH = imgRect.height;
-      const offsetX = imgRect.left - wrapRect.left;
-      const offsetY = imgRect.top - wrapRect.top;
+      // Get viewport size
+      const viewportW = window.innerWidth, viewportH = window.innerHeight;
+      // Aspect ratios
+      const imgNatW = quiltImg.naturalWidth, imgNatH = quiltImg.naturalHeight;
+      const ratio = Math.min(0.98 * viewportW / imgNatW, 0.98 * viewportH / imgNatH);
+      const displayW = imgNatW * ratio, displayH = imgNatH * ratio;
 
+      // Offset to center image
+      const offsetX = (viewportW - displayW) / 2;
+      const offsetY = (viewportH - displayH) / 2;
+
+      // Set quilt image display size and position
+      quiltImg.style.width = displayW + "px";
+      quiltImg.style.height = displayH + "px";
+      quiltImg.style.left = offsetX + "px";
+      quiltImg.style.top = offsetY + "px";
+      quiltImg.style.position = "absolute";
+
+      // Place SVG overlay exactly on top of image
       patchRects.setAttribute('width', displayW);
       patchRects.setAttribute('height', displayH);
       patchRects.style.width = displayW + 'px';
       patchRects.style.height = displayH + 'px';
       patchRects.style.left = offsetX + 'px';
       patchRects.style.top  = offsetY + 'px';
-
       patchRects.setAttribute('viewBox', `0 0 ${displayW} ${displayH}`);
       patchRects.innerHTML = "";
 
-      const natW = quiltImg.naturalWidth, natH = quiltImg.naturalHeight;
-      const scaleX = displayW / natW;
-      const scaleY = displayH / natH;
+      // Patch coordinates are in natural image pixel units, scale to visible display
+      const scaleX = displayW / imgNatW;
+      const scaleY = displayH / imgNatH;
 
       patches.forEach((p, idx) => {
         const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
@@ -311,9 +325,6 @@
       }
     });
 
-    function stopEvent(e) {
-      e.stopPropagation(); e.preventDefault();
-    }
     ['touchstart','mousedown'].forEach(evt => {
       modal.addEventListener(evt, function(e){
         if(modal.classList.contains('active') && e.target === modal) {
@@ -332,7 +343,7 @@
       if(patches.length) drawPatchRects();
     };
 
-    // Fetch patches from file
+    // Load patches from file
     fetch('quilt-patches.json')
       .then(r=>r.json())
       .then(json=>{
