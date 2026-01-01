@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Manual Quilt Patch Selector – Export ZIP of Patch Images with JSON</title>
+  <title>Manual Quilt Patch Selector – Export ZIP, Load JSON, Comic Order</title>
   <style>
     body { background: #232; color: #eee; font-family: sans-serif; padding: 2em;}
     #quilt-area {
@@ -66,7 +66,9 @@
     #downloadBtn, #zipBtn {margin-left:1em;}
     #patchCountInfo {margin-left:2em;}
     #result {margin-top:1.1em; color: #fff; background: #181; padding: .5em;  font-size: 1em; max-width: 720px;}
+    #loadJsonLabel { color:#fffbe8; font-size:.99em; margin-left:2em; margin-right:.6em;}
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
   <h2>Manual Quilt Patch Selector</h2>
@@ -74,6 +76,8 @@
     <label>Select quilt image:
       <input type="file" id="fileInput" accept="image/*">
     </label>
+    <span id="loadJsonLabel">or Load JSON: </span>
+    <input type="file" id="jsonInput" accept="application/json">
     <button id="resetBtn" title="Remove all patches and image">Reset</button>
     <button id="downloadBtn" disabled>Download JSON</button>
     <button id="zipBtn" disabled>Download ZIP of Patch Images + JSON</button>
@@ -102,11 +106,7 @@
     </div>
   </div>
   <pre id="result"></pre>
-
-  <script src="https://cdn.jsdelivr.net/npm/jszip/dist/jszip.min.js"></script>
   <script>
-    // Comic-reading-order sort: vertical above/below relationships dominate read order,
-    // for overlaps sort left to right.
     function sortPatchesComicOrder(arr) {
       return arr.slice().sort((a, b) => {
         const aTop = a.top, aBot = a.top + a.height, aLeft = a.left;
@@ -123,6 +123,7 @@
     const LS_IMGNAME = 'quilt_manual_filename_v2b';
 
     const fileInput = document.getElementById('fileInput');
+    const jsonInput = document.getElementById('jsonInput');
     const quiltImg = document.getElementById('quilt-bg');
     const patchRects = document.getElementById('patch-rects');
     const overlayBtns = document.querySelector('.overlay-buttons');
@@ -189,6 +190,34 @@
         saveLocal();
       };
       reader.readAsDataURL(file);
+    });
+
+    // ---- LOAD JSON ----
+    jsonInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        let json = null;
+        try {
+          json = JSON.parse(ev.target.result);
+        } catch (err) {
+          alert("Could not parse JSON: " + err.message);
+          return;
+        }
+        if (!Array.isArray(json) || !json.length) {
+          alert("No patches found in JSON.");
+          return;
+        }
+        patches = json;
+        drawOverlays();
+        updateJSONResult();
+        patchCountInfo.textContent = `${patches.length} patches loaded from JSON`;
+        downloadBtn.disabled = false;
+        zipBtn.disabled = false;
+        saveLocal();
+      };
+      reader.readAsText(file);
     });
 
     quiltImg.onload = function() {
@@ -294,7 +323,6 @@
         rect.tabIndex = 0;
         rect.title = (p.label||"") + "\n" + (p.desc||"");
         patchRects.appendChild(rect);
-
         if (imgW > 0) {
           const btn = document.createElement('button');
           btn.className = "edit-button";
@@ -377,9 +405,7 @@
       const sorted = sortPatchesComicOrder(
         patches.map((p,i)=>Object.assign({filename:`patch-${i+1}.png`},p))
       );
-      // Prepare ZIP
       const zip = new JSZip();
-      // Add patch images
       const img = await loadImageFromUrl(quiltImg.src);
       for(let i=0;i<sorted.length;++i){
         const p = sorted[i];
@@ -391,13 +417,10 @@
           p.left, p.top, p.width, p.height,
           0, 0, p.width, p.height
         );
-        // save PNG
         const dataURL = c.toDataURL('image/png');
         zip.file(`patch-${i+1}.png`, dataURLtoBlob(dataURL));
       }
-      // JSON with filenames
       zip.file('quilt-patches.json', JSON.stringify(sorted, null, 2));
-      // Download
       const blob = await zip.generateAsync({type:'blob'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -407,7 +430,6 @@
       a.click();
       setTimeout(()=>{document.body.removeChild(a); URL.revokeObjectURL(url);},100);
     };
-    // -- Utilities for ZIP --
     function dataURLtoBlob(dataurl) {
       const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
         bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);

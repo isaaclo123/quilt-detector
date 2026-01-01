@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Quilt Patch Display (Modal Fade In/Out, Glow Highlight, Animated Slides)</title>
+  <style>
+    html, body {
+      height: 100%; margin: 0; padding: 0; background: #222; font-family: sans-serif;
+      width: 100vw; height: 100vh; overflow: hidden;
+    }
+    .quilt-wrap {
+      position: relative; width: 100vw; height: 100vh; overflow: hidden;
+      background: #222; display: flex; align-items: center; justify-content: center;
+    }
+    #quilt-bg {
+      display: block; width: 100vw; height: 100vh;
+      object-fit: contain; user-select: none; pointer-events: none; background: #222;
+    }
+    #patch-rects {
+      position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10; width: 100%; height: 100%;
+    }
+    .patch-rect {
+      fill: rgba(0,0,0,0);
+      pointer-events: all; cursor: pointer;
+      transition:
+        stroke-width 0.19s cubic-bezier(.4,0,.2,1),
+        stroke 0.22s cubic-bezier(0.4,0,.2,1),
+        fill 0.16s cubic-bezier(.4,0,.2,1),
+        filter 0.28s cubic-bezier(.47,1.3,.25,.92);
+      filter: drop-shadow(0px 0px 0px rgba(227,122,0,0));
+      will-change: filter, stroke-width, stroke, fill;
+    }
+    .patch-rect.active,
+    .patch-rect:focus,
+    .patch-rect:hover {
+      stroke: #e04813;
+      stroke-width: 5px;
+      fill: rgba(255,255,80,0.18);
+      filter: drop-shadow(0px 2.5px 14px rgba(227,122,0,0.36));
+      z-index: 20;
+      transition:
+        stroke-width 0.21s cubic-bezier(.4,0,.2,1),
+        stroke 0.14s cubic-bezier(0.4,0,.2,1),
+        fill 0.15s cubic-bezier(.4,0,.2,1),
+        filter 0.38s cubic-bezier(.47,1.2,.3,.94);
+    }
+    .modal-backdrop {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.62);
+      z-index: 9999; align-items: center; justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.33s cubic-bezier(.48,1,.1,.94);
+    }
+    .modal-backdrop.active {
+      display: flex;
+      opacity: 1;
+      pointer-events: auto;
+      transition: opacity 0.44s cubic-bezier(.45,0,.1,1.1);
+    }
+    .modal-arrows-static {
+      position: fixed;
+      pointer-events: none;
+      z-index: 10000;
+      top: 50%;
+      left: 0; width: 100vw; height: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      pointer-events: none;
+    }
+    .modal-arrow {
+      background: #fff6; border: none; font-size: 2.1em; color: #c48a4a;
+      cursor: pointer; border-radius: 100px;
+      width: 1.7em; height: 1.7em; display: flex; align-items: center; justify-content: center;
+      z-index: 24; pointer-events: auto;
+      transition: background 0.15s, color 0.13s; box-shadow: 0 1px 10px #0003; margin: 0 1vw;
+    }
+    .modal-arrow:hover, .modal-arrow:focus { background: #ffe6ba; color: #bb2323; outline: none;}
+    .modal-content-wrap {
+      position: relative; width: 0; height: 0; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-content-anim {
+      position: absolute; left: 50%; top: 50%;
+      background: #fff; box-shadow: 0 8px 40px #000a; border-radius: 12px;
+      padding: 1.0em 0.5em 0.7em 0.5em; max-width: 98vw; max-height: 96vh;
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 320px;
+      overflow-x: visible;
+      will-change: transform, opacity;
+      transition:
+        transform 0.47s cubic-bezier(.85,.26,.16,1.34),
+        opacity 0.37s cubic-bezier(.5,.4,.18,1.0);
+      opacity: 1;
+    }
+    .modal-content-anim.modal-fadein {
+      opacity: 0;
+      animation: modal-fadein 0.32s ease-out forwards;
+    }
+    .modal-content-anim.modal-fadeout {
+      opacity: 1;
+      animation: modal-fadeout 0.32s ease-in forwards;
+    }
+    @keyframes modal-fadein {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes modal-fadeout {
+      from { opacity: 1; }
+      to   { opacity: 0; }
+    }
+    .modal-label { font-size: 1.18em; color: #e48d29; font-weight: bold; margin-bottom: 0.5em; margin-top: 0.5em; text-align: center;}
+    .modal-desc { font-size: 1.12em; color: #322; text-align: center; margin-bottom: 0.4em; max-width: 85vw; line-height: 1.45;}
+    .modal-slideshow {
+      position: relative; width: 90vw; max-width: 540px; min-width:260px; height: 45vh; margin-bottom: 0.8em;
+      overflow: hidden; display: flex; align-items: center; justify-content: center;
+    }
+    .modal-slide-img {
+      background: #fff; border-radius: 12px; box-shadow: 0 2px 18px #0003;
+      display: block; position: relative; top: 0; left: 0; margin: 0 auto;
+      max-width: 480px; max-height: 340px;
+      width: auto; height: auto;
+      object-fit: contain;
+    }
+    .modal-close {
+      position: absolute; top: 0.5em; right: 1em;
+      background: #fff; border: none; font-size: 1.7em; color: #c48a4a;
+      cursor: pointer; padding: 0 0.1em; border-radius: 7px; line-height: 1;
+      font-weight: bold; z-index: 2; transition: background 0.14s, color 0.14s;
+    }
+    .modal-close:hover, .modal-close:focus { background: #ffe6ba; color: #bb2323; outline: none;}
+    @media (max-width: 600px) {
+      .modal-arrow { font-size: 1.17em; width:1.13em; height: 1.13em;}
+      .modal-label {font-size:.99em;}
+    }
+  </style>
+</head>
+<body>
+  <div class="quilt-wrap">
+    <img src="quilt.jpg" id="quilt-bg" alt="Quilt Background">
+    <svg id="patch-rects"></svg>
+  </div>
+  <div class="modal-backdrop" id="modal">
+    <div class="modal-arrows-static">
+      <button class="modal-arrow" id="modalPrev" aria-label="Previous patch" title="Previous patch">&#8678;</button>
+      <button class="modal-arrow" id="modalNext" aria-label="Next patch" title="Next patch">&#8680;</button>
+    </div>
+    <div class="modal-content-wrap" id="modalContentWrap"></div>
+  </div>
+  <script>
+    const quiltImg = document.getElementById('quilt-bg');
+    const patchRects = document.getElementById('patch-rects');
+    const modal = document.getElementById('modal');
+    const modalPrev = document.getElementById('modalPrev');
+    const modalNext = document.getElementById('modalNext');
+    const modalContentWrap = document.getElementById('modalContentWrap');
+    let patches = [];
+    let modalIdx = 0;
+    let animating = false;
+    let modalOpen = false;
+    let cleanupModalTimeout = null;
+
+    // Same logic as before but renderPatchToCanvas replaced with renderPatchImage
+    function getDisplayedImageRect(img) {
+      const container = img.parentElement;
+      const cW = container.clientWidth, cH = container.clientHeight;
+      const iW = img.naturalWidth, iH = img.naturalHeight;
+      let ratio = Math.min(cW/iW, cH/iH);
+      let dW = iW * ratio, dH = iH * ratio;
+      let left = (cW - dW) / 2, top = (cH - dH) / 2;
+      return {left, top, width: dW, height: dH};
+    }
+
+    function drawPatchRects() {
+      const imgRect = getDisplayedImageRect(quiltImg);
+      patchRects.setAttribute('width', imgRect.width);
+      patchRects.setAttribute('height', imgRect.height);
+      patchRects.style.width = imgRect.width + 'px';
+      patchRects.style.height = imgRect.height + 'px';
+      patchRects.style.left = imgRect.left + "px";
+      patchRects.style.top = imgRect.top + "px";
+      patchRects.innerHTML = "";
+      patches.forEach((p, idx) => {
+        const sx = imgRect.width / quiltImg.naturalWidth, sy = imgRect.height / quiltImg.naturalHeight;
+        const x = p.left * sx, y = p.top * sy, w = p.width * sx, h = p.height * sy;
+        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        rect.setAttribute('class','patch-rect');
+        rect.setAttribute('x', x); rect.setAttribute('y', y);
+        rect.setAttribute('width', w); rect.setAttribute('height', h);
+        rect.setAttribute('tabindex',0);
+        rect.setAttribute('data-idx',idx);
+        rect.addEventListener('mouseover', ()=>{ if (!modalOpen) rect.classList.add('active'); });
+        rect.addEventListener('mouseout', ()=> rect.classList.remove('active'));
+        rect.addEventListener('focus', ()=>{ if (!modalOpen) rect.classList.add('active'); });
+        rect.addEventListener('blur', ()=> rect.classList.remove('active'));
+        rect.addEventListener('click', (e)=>{
+          openModal(idx);
+          e.stopPropagation();
+        });
+        patchRects.appendChild(rect);
+      });
+    }
+
+    function openModal(idx) {
+      if (cleanupModalTimeout) {
+        clearTimeout(cleanupModalTimeout);
+        cleanupModalTimeout = null;
+      }
+      document.querySelectorAll('.patch-rect').forEach(el => {
+        el.classList.remove('active');
+        el.blur();
+      });
+      modalIdx = (idx + patches.length) % patches.length;
+      renderModal(modalIdx, null, true);
+      modalOpen = true;
+      modal.classList.add('active');
+    }
+
+    function slideToModal(newIdx, direction) {
+      if (animating || newIdx === modalIdx) return;
+      renderModal(newIdx, direction, false);
+      modalIdx = (newIdx + patches.length) % patches.length;
+    }
+
+    function closeModal() {
+      document.querySelectorAll('.patch-rect').forEach(el => el.blur());
+      if (cleanupModalTimeout) clearTimeout(cleanupModalTimeout);
+      const card = modalContentWrap.querySelector('.modal-content-anim');
+      if(card) {
+        card.classList.remove('modal-fadein');
+        card.classList.add('modal-fadeout');
+      }
+      modal.classList.remove('active');
+      modalOpen = false;
+      cleanupModalTimeout = setTimeout(()=>{
+        if(card && card.parentNode) card.parentNode.removeChild(card);
+        modalContentWrap.innerHTML = '';
+        cleanupModalTimeout = null;
+      },340);
+    }
+
+    function renderModal(idx, direction=null, isEnter=true) {
+      if (animating) return;
+      idx = (idx + patches.length) % patches.length;
+      const p = patches[idx];
+      const prevCard = modalContentWrap.querySelector('.modal-content-anim');
+      const card = document.createElement('div');
+      card.className = 'modal-content-anim';
+      card.innerHTML = `
+        <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
+        <div class="modal-label">${p.label ? p.label : `Patch ${idx+1}`}</div>
+        <div class="modal-slideshow"></div>
+        <div class="modal-desc">${p.desc ? p.desc : ''}</div>
+      `;
+      const slideDiv = card.querySelector('.modal-slideshow');
+      // Replace canvas with image using filename field
+      if (p.filename) {
+        const imgEl = document.createElement('img');
+        imgEl.className = "modal-slide-img";
+        imgEl.alt = p.label || '';
+        imgEl.src = "thumbnails/" + p.filename;
+        imgEl.onerror = function() {
+          imgEl.style.background = "#e86e6e";
+          imgEl.alt = "(thumbnail image not found)";
+        };
+        slideDiv.appendChild(imgEl);
+      } else {
+        slideDiv.innerHTML = '<div style="color:#902; background:#fee; padding:.5em; border-radius:5px;">No patch thumbnail (filename) set in JSON for this patch.</div>';
+      }
+      card.style.opacity = "1";
+      let startTransform = "translate(-50%,-50%)";
+      let endTransform = "translate(-50%,-50%)";
+      if(direction === 'left')      startTransform = "translate(80vw,-50%)";
+      else if(direction === 'right')startTransform = "translate(-180vw,-50%)";
+      card.style.transform = startTransform;
+      if(prevCard) prevCard.style.zIndex = "2";
+      card.style.zIndex = "3";
+      modalContentWrap.appendChild(card);
+
+      card.querySelector('#modalClose').onclick = (e) => {
+        e.stopPropagation();
+        closeModal();
+      };
+
+      setTimeout(() => {
+        card.querySelector('.modal-close').focus();
+      }, 350);
+
+      if(isEnter || !prevCard) {
+        card.classList.add('modal-fadein');
+        if(prevCard && prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
+      } else if(direction && prevCard) {
+        animating = true;
+        prevCard.style.transition = "transform 0.47s cubic-bezier(.85,.26,.16,1.34), opacity 0.37s cubic-bezier(.5,.4,.18,1.0)";
+        if(direction === "left") prevCard.style.transform = "translate(-180vw,-50%)";
+        else if(direction === "right") prevCard.style.transform = "translate(80vw,-50%)";
+        prevCard.style.opacity = "0.6";
+        setTimeout(()=>{
+          card.style.transition = "transform 0.47s cubic-bezier(.85,.26,.16,1.34), opacity 0.37s cubic-bezier(.5,.4,.18,1.0)";
+          card.style.transform = endTransform;
+        },10);
+        setTimeout(()=>{
+          if(prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
+          animating = false;
+        },480);
+      } else {
+        if(prevCard && prevCard.parentNode) prevCard.parentNode.removeChild(prevCard);
+        card.style.transition = "none";
+        card.style.transform = endTransform;
+      }
+    }
+
+    modalPrev.addEventListener('click', ()=>{
+      if(!modalOpen || animating) return;
+      slideToModal((modalIdx-1+patches.length) % patches.length, 'right');
+    });
+    modalNext.addEventListener('click', ()=>{
+      if(!modalOpen || animating) return;
+      slideToModal((modalIdx+1) % patches.length, 'left');
+    });
+
+    window.addEventListener('keydown', e => {
+      if(modalOpen && modal.classList.contains('active') && !animating) {
+        if(e.key==="Escape"||e.key==="Esc"){ closeModal(); }
+        else if(e.key==="ArrowLeft"||e.key==="Left"){ slideToModal((modalIdx-1+patches.length)%patches.length,'right'); }
+        else if(e.key==="ArrowRight"||e.key==="Right"){ slideToModal((modalIdx+1)%patches.length,'left'); }
+      }
+    });
+
+    function stopEvent(e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    ['touchstart','mousedown'].forEach(evt => {
+      modal.addEventListener(evt, function(e){
+        if(modal.classList.contains('active') && e.target === modal) {
+          closeModal();
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      }, {capture: false});
+    });
+
+    window.addEventListener('resize', ()=>{
+      if(quiltImg.complete && patches.length) drawPatchRects();
+      if(modalOpen && modal.classList.contains('active')) renderModal(modalIdx,null);
+    });
+    quiltImg.onload = ()=>{
+      if(patches.length) drawPatchRects();
+    };
+
+    async function loadPatchesAndInit() {
+      let resp = await fetch('quilt-patches.json');
+      patches = await resp.json();
+      if (!quiltImg.complete) {
+        await new Promise(res=>quiltImg.onload=res);
+      }
+      drawPatchRects();
+    }
+    loadPatchesAndInit();
+  </script>
+</body>
+</html>
