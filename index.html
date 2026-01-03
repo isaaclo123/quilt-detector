@@ -4,9 +4,10 @@
   <meta charset="UTF-8">
   <title>Quilt Patch Viewer (Bigger Desktop Modal, Scaled Images)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link href="https://fonts.googleapis.com/css2?family=Martel:wght@400;700&display=swap" rel="stylesheet">
   <style>
     html, body {
-      height: 100%; width: 100vw; margin: 0; padding: 0; background: #222; font-family: sans-serif; overflow: hidden;
+          height: 100%; width: 100vw; margin: 0; padding: 0; background: #222; font-family: 'Sitka Text', 'Martel', serif; overflow: hidden;
     }
     .quilt-wrap {
       position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; background: #222; overflow: hidden;
@@ -53,7 +54,7 @@
     .global-modal-close {
       position: fixed;
       top: 1.5vw; right: 2vw;
-      background: #fff; border: none; font-size: 2.4em; color: #c48a4a;
+      background: transparent; border: none; font-size: 2.4em; color: #c48a4a;
       cursor: pointer; border-radius: 100px; box-shadow: 0 1px 10px #0002; line-height:1.1;
       z-index: 12000; padding: 0 0.15em;
       font-weight: bold; transition: background 0.14s, color 0.14s;
@@ -112,7 +113,7 @@
     @keyframes modal-fadeout { from { opacity: 1; } to { opacity: 0; } }
     .modal-label {
       order: 0;
-      font-size: 1.17em; color: #e48d29; font-weight: bold;
+      font-size: 1.34em; color: #e48d29; font-weight: bold;
       margin-bottom: 0.45em; margin-top: 0.38em; text-align: center;
       width: 100%; max-width: 100%; background: #fff; box-sizing: border-box; word-break: break-word;
       flex: 0 0 auto;
@@ -182,7 +183,7 @@
       .modal-content-anim { min-width: 76px; min-height: 86px; padding: 0.17em 0.03em 0.14em 0.03em; max-width: 99vw;}
       .modal-label { font-size: .98em; margin-bottom:.12em;}
       .modal-desc { font-size:0.96em; margin-bottom: .19em;}
-      .modal-arrow { font-size: 1.03em; width:1.05em; height: 1.05em;}
+      .modal-arrow { font-size: 1.28em; width: 48px; height: 48px; min-width: 44px; min-height: 44px; padding: 0 6px; }
       .modal-slideshow { max-width: 99vw; min-width: 55vw; min-height: 52px; }
       .modal-slide-img { max-width: 97vw; max-height: 21vh; min-width:33px; min-height:21px;}
       .spinner { min-width: 7vw; min-height: 32px;}
