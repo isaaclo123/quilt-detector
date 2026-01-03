@@ -81,28 +81,55 @@
       display: flex; align-items: center; justify-content: space-between;
     }
     /* Modal navigation arrow buttons: Default (transparent), hover/focus get pink background + accent, no border/shadow on normal */
-    .modal-arrow {
+    .modal-caret {
       background: transparent !important;
       border: none;
-      font-size: 2.1em;
+      font-size: 2.4em;
       color: #ffbcc8;
       cursor: pointer;
       border-radius: 100px;
-      width: 1.7em; height: 1.7em; display: flex; align-items: center; justify-content: center;
-      z-index: 24; pointer-events: auto;
+      width: 1.5em;
+      height: 1.5em;
+      min-width: 1.2em;
+      min-height: 1.2em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 24;
+      pointer-events: auto;
       transition: background 0.14s, color 0.14s;
       margin: 0 1vw;
       box-shadow: none !important;
+      position: relative;
+      user-select: none;
     }
-    .modal-arrow:hover, .modal-arrow:focus, .modal-arrow:active {
-      background: #ffeaef !important;
-      color: #ffbcc8 !important;
-      outline: none;
-      box-shadow: 0 1px 10px #0003 !important;
+    .modal-caret svg {
+      width: 1em;
+      height: 1em;
+      display: block;
     }
-    .modal-arrow {
-      background: transparent !important;
-      box-shadow: none !important;
+    @media (max-width: 700px) {
+      .modal-caret {
+        font-size: 1.05em;
+        width: 1.18em;
+        height: 1.18em;
+        min-width: 1em;
+        min-height: 1em;
+      }
+      .modal-caret svg {
+        width: 0.8em;
+        height: 0.8em;
+      }
+    }
+    
+        .modal-caret:hover, .modal-caret:focus, .modal-caret:active {
+              background: transparent !important;
+              outline: none;
+              /* Highlight the triangle fill color (SVG) visually on hover/focus */
+            }
+            .modal-caret:hover svg polygon, .modal-caret:focus svg polygon, .modal-caret:active svg polygon {
+              fill: #f49cbb;
+              filter: drop-shadow(0 0 4px #ffbcc7cc);
     }
     .modal-content-wrap {
       position: relative; width: 0; height: 0; display: flex; align-items: center; justify-content: center;
@@ -232,8 +259,8 @@
   </div>
   <div class="modal-backdrop" id="modal">
     <div class="modal-arrows-static">
-      <button class="modal-arrow" id="modalPrev" aria-label="Previous patch" title="Previous patch">&#8678;</button>
-      <button class="modal-arrow" id="modalNext" aria-label="Next patch" title="Next patch">&#8680;</button>
+      <span class="modal-caret" id="modalPrev" aria-label="Previous patch" title="Previous patch" tabindex="0" role="button"><svg width="32" height="32" viewBox="0 0 32 32" style="display:inline-block;vertical-align:middle" aria-hidden="true"><polygon points="22,4 10,16 22,28" fill="#ffbcc8"/></svg></span>
+            <span class="modal-caret" id="modalNext" aria-label="Next patch" title="Next patch" tabindex="0" role="button"><svg width="32" height="32" viewBox="0 0 32 32" style="display:inline-block;vertical-align:middle" aria-hidden="true"><polygon points="10,4 22,16 10,28" fill="#ffbcc8"/></svg></span>
     </div>
     <div class="modal-content-wrap" id="modalContentWrap"></div>
   </div>
