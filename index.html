@@ -33,8 +33,8 @@
     .patch-rect.active,
     .patch-rect:focus,
     .patch-rect:hover {
-      stroke: #e04813; stroke-width: 5px; fill: rgba(255,255,80,0.18);
-      filter: drop-shadow(0 2.5px 14px rgba(227,122,0,0.36));
+      stroke: #ffbcc8; stroke-width: 5px; fill: rgba(255,188,200,0.14);
+            filter: drop-shadow(0 2.5px 14px rgba(255,209,231,0.25));
       z-index: 20;
     }
     .modal-backdrop {
@@ -54,8 +54,15 @@
     .global-modal-close {
       position: fixed;
       top: 1.5vw; right: 2vw;
-      background: transparent; border: none; font-size: 2.4em; color: #c48a4a;
-      cursor: pointer; border-radius: 100px; box-shadow: 0 1px 10px #0002; line-height:1.1;
+      background: transparent;
+      border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+      font-size: 2.4em;
+      color: #ffbcc8;
+      cursor: pointer;
+      border-radius: 100px;
+      line-height:1.1;
       z-index: 12000; padding: 0 0.15em;
       font-weight: bold; transition: background 0.14s, color 0.14s;
       display: none;
@@ -63,7 +70,7 @@
     .modal-backdrop.active ~ .global-modal-close {
       display: block;
     }
-    .global-modal-close:hover, .global-modal-close:focus { background: #ffe6ba; color: #bb2323; outline: none;}
+    .global-modal-close:hover, .global-modal-close:focus { background: transparent; color: #ffbcc8; outline: none;}
     .modal-arrows-static {
       position: fixed;
       pointer-events: none;
@@ -72,14 +79,30 @@
       left: 0; width: 100vw; height: 0;
       display: flex; align-items: center; justify-content: space-between;
     }
+    /* Modal navigation arrow buttons: Default (transparent), hover/focus get pink background + accent, no border/shadow on normal */
     .modal-arrow {
-      background: #fff6; border: none; font-size: 2.1em; color: #c48a4a;
-      cursor: pointer; border-radius: 100px;
+      background: transparent !important;
+      border: none;
+      font-size: 2.1em;
+      color: #ffbcc8;
+      cursor: pointer;
+      border-radius: 100px;
       width: 1.7em; height: 1.7em; display: flex; align-items: center; justify-content: center;
       z-index: 24; pointer-events: auto;
-      transition: background 0.15s, color 0.13s; box-shadow: 0 1px 10px #0003; margin: 0 1vw;
+      transition: background 0.14s, color 0.14s;
+      margin: 0 1vw;
+      box-shadow: none !important;
     }
-    .modal-arrow:hover, .modal-arrow:focus { background: #ffe6ba; color: #bb2323; outline: none;}
+    .modal-arrow:hover, .modal-arrow:focus, .modal-arrow:active {
+      background: #ffeaef !important;
+      color: #ffbcc8 !important;
+      outline: none;
+      box-shadow: 0 1px 10px #0003 !important;
+    }
+    .modal-arrow {
+      background: transparent !important;
+      box-shadow: none !important;
+    }
     .modal-content-wrap {
       position: relative; width: 0; height: 0; display: flex; align-items: center; justify-content: center;
     }
@@ -113,7 +136,7 @@
     @keyframes modal-fadeout { from { opacity: 1; } to { opacity: 0; } }
     .modal-label {
       order: 0;
-      font-size: 1.34em; color: #e48d29; font-weight: bold;
+      font-size: 1.34em; color: #ffbcc8; font-weight: bold;
       margin-bottom: 0.45em; margin-top: 0.38em; text-align: center;
       width: 100%; max-width: 100%; background: #fff; box-sizing: border-box; word-break: break-word;
       flex: 0 0 auto;
@@ -217,6 +240,25 @@
     const modalNext = document.getElementById('modalNext');
     const modalContentWrap = document.getElementById('modalContentWrap');
     const modalCloseGlobal = document.getElementById('modalCloseGlobal');
+
+    // Extra JS: actively enforce the arrow button normal state after mouse leaves or blur (prevents sticky background)
+    [modalPrev, modalNext].forEach(btn => {
+      // Robustly force reset on all possible events where highlighting might stick
+      function forceReset() {
+        setTimeout(() => {
+          btn.style.background = 'transparent';
+          btn.style.boxShadow = 'none';
+        }, 1); // Run after browser state, avoids race with :active
+      }
+      btn.addEventListener('mouseleave', forceReset);
+      btn.addEventListener('mouseout', forceReset);
+      btn.addEventListener('blur', forceReset);
+      btn.addEventListener('mouseup', forceReset);
+      // Defensive: keyup should also reset if any browser sticks focus
+      btn.addEventListener('keyup', function(e) {
+        if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') forceReset();
+      });
+    });
 
     function drawPatchRects() {
       if (!quiltImg.complete || !quiltImg.naturalWidth || !quiltImg.naturalHeight) return;
