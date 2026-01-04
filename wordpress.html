@@ -28,10 +28,9 @@ a:hover, a:focus {
     
     #quilt-bg {
       display: block;
-      max-width: 95vw;
-      max-height: 90vh;
-      width: auto;
-      height: auto;
+          width: 100%;
+          height: auto;
+          max-height: 90vh;
       object-fit: contain;
       background: #222;
       user-select: none;
@@ -1155,10 +1154,11 @@ a:hover, a:focus {
       // Get the size of the displayed (scaled) image
       const imgW = quiltImg.naturalWidth;
       const imgH = quiltImg.naturalHeight;
-      const dispW = quiltImg.clientWidth;
-      const dispH = quiltImg.clientHeight;
+      // Use getBoundingClientRect to accurately capture the rendered image size, regardless of CSS scaling
+      const rect = quiltImg.getBoundingClientRect();
+      const dispW = rect.width;
+      const dispH = rect.height;
 
-      // Set SVG to match the displayed image size for correct overlay
       patchRects.setAttribute('width', dispW);
       patchRects.setAttribute('height', dispH);
       patchRects.style.width = dispW + 'px';
